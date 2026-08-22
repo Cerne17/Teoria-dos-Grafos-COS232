@@ -1,10 +1,10 @@
 #pragma once
-#include <vector>
 #include <string>
+#include <vector>
 
 struct Graph {
-  int n; // # of vertexes
-  int m; // # of edges
+  int n;                             // # of vertexes
+  int m;                             // # of edges
   std::vector<std::vector<int>> adj; // adjacency list, 1-indexed
 
   explicit Graph(int vertexCount);
@@ -12,4 +12,16 @@ struct Graph {
   int degree(int u) const;
 };
 
-Graph readGraph(const std::string& path);
+Graph readGraph(const std::string &path);
+
+struct GraphStats {
+  int n; // # of vertexes
+  int m; // # of edges
+
+  int minDegree;
+  int maxDegree;
+  double avgDegree;
+  double medianDegree;
+};
+
+GraphStats computeStats(const Graph &g);

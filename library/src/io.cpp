@@ -11,11 +11,9 @@ Graph readGraph(const std::string &path) {
   }
 
   int n, a, b;
-  in >> n;
 
-  if (!n)
-    throw std::runtime_error("could not read vertex count n = " +
-                             std::to_string(n));
+  if (!(in >> n))
+    throw std::runtime_error("could not read vertex count 'n'");
   if (n < 0)
     throw std::runtime_error("vertex count can not be < 0. n = " +
                              std::to_string(n));

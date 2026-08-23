@@ -1,5 +1,6 @@
 #include "graph.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <stdexcept>
 
@@ -22,6 +23,9 @@ Graph readGraph(const std::string &path) {
   while (in >> a >> b) {
     graph.addEdge(a, b);
   }
+
+  for (int u = 1; u <= n; ++u)
+    std::sort(graph.adj[u].begin(), graph.adj[u].end());
 
   return graph;
 }

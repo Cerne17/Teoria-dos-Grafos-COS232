@@ -25,3 +25,12 @@ struct GraphStats {
 };
 
 GraphStats computeStats(const Graph &g);
+
+struct SearchTree {
+  std::vector<int> parent;
+  std::vector<int> level;
+};
+
+SearchTree bfs(const Graph &g, int source);
+
+SearchTree dfs(const Graph &g, int source);

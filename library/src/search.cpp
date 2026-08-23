@@ -20,7 +20,7 @@ SearchTree bfs(const Graph &g, int source) {
     int current = q.front();
     q.pop();
 
-    for (int u : g.adj[current]) {
+    for (int u : g.neighbors(current)) {
       if (!visited[u]) {
         visited[u] = true;
         q.push(u);
@@ -56,7 +56,10 @@ SearchTree dfs(const Graph &g, int source) {
     parent[u] = p;
     level[u] = (u == source) ? 0 : level[p] + 1;
 
-    for (auto it = g.adj[u].rbegin(); it != g.adj[u].rend(); ++it) {
+    std::vector<int> nbrs =
+        g.neighbors(u); // avoids calling neighbors twice and make sure the
+                        // vector is not destroyed on the iterations end
+    for (auto it = nbrs.rbegin(); it != nbrs.rend(); ++it) {
       int v = *it;
       if (!visited[v])
         s.push({v, u});

@@ -1,4 +1,6 @@
 #include "graph.hpp"
+
+#include <algorithm>
 #include <cassert>
 
 AdjacencyList::AdjacencyList(int vertexCount)
@@ -20,6 +22,11 @@ int AdjacencyList::degree(int u) const {
 std::vector<int> AdjacencyList::neighbors(int u) const {
   assert(u >= 1 && u <= n && "neighbors: u out of range");
   return adj[u];
+}
+
+void AdjacencyList::finalize() {
+  for (int u = 1; u <= n; ++u)
+    std::sort(adj[u].begin(), adj[u].end());
 }
 
 AdjacencyMatrix::AdjacencyMatrix(int vertexCount)
@@ -52,3 +59,5 @@ std::vector<int> AdjacencyMatrix::neighbors(int u) const {
       result.push_back(v);
   return result;
 }
+
+void AdjacencyMatrix::finalize() {}

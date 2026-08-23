@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,7 @@ public:
   virtual void addEdge(int u, int v) = 0;
   virtual int degree(int u) const = 0;
   virtual std::vector<int> neighbors(int u) const = 0;
+  virtual void finalize() = 0;
 };
 
 class AdjacencyList : public Graph {
@@ -24,6 +26,7 @@ public:
   void addEdge(int u, int v) override;
   int degree(int u) const override;
   std::vector<int> neighbors(int u) const override;
+  void finalize() override;
 };
 
 class AdjacencyMatrix : public Graph {
@@ -35,9 +38,12 @@ public:
   void addEdge(int u, int v) override;
   int degree(int u) const override;
   std::vector<int> neighbors(int u) const override;
+  void finalize() override;
 };
 
-Graph readGraph(const std::string &path);
+enum class Representation { List, Matrix };
+
+std::unique_ptr<Graph> readGraph(const std::string &path, Representation rep);
 
 struct GraphStats {
   int n; // # of vertexes

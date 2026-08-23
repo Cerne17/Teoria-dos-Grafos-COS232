@@ -1,10 +1,10 @@
 #include "graph.hpp"
 
-#include <algorithm>
 #include <fstream>
 #include <stdexcept>
 
-Graph readGraph(const std::string &path) {
+std::unique_ptr<Graph> readGraph(const std::string &path, Representation rep) {
+  std::unique_ptr<Graph> graph;
   std::ifstream in(path);
 
   if (!in) {
@@ -19,13 +19,16 @@ Graph readGraph(const std::string &path) {
     throw std::runtime_error("vertex count can not be < 0. n = " +
                              std::to_string(n));
 
-  Graph graph(n);
+  if (rep == Representation::Matrix)
+    graph = std::make_unique<AdjacencyMatrix>(n);
+  else
+    graph = std::make_unique<AdjacencyList>(n);
+
   while (in >> a >> b) {
-    graph.addEdge(a, b);
+    graph->addEdge(a, b);
   }
 
-  for (int u = 1; u <= n; ++u)
-    std::sort(graph.adj[u].begin(), graph.adj[u].end());
+  graph->finalize();
 
   return graph;
 }

@@ -1,52 +1,36 @@
 #include "graph.hpp"
 
+#include <filesystem>
 #include <iostream>
 #include <string>
 
 int main() {
-  std::string path = "data/graph.txt";
+  std::string path_in = "data/graph.txt";
+  std::string path_out_stats = "data/stats.csv";
+  std::string path_out_bfs_tree = "data/bfs_tree.csv";
+  std::string path_out_dfs_tree = "data/dfs_tree.csv";
+  std::string repr;
+
+  std::filesystem::remove(path_out_stats);
+  std::filesystem::remove(path_out_bfs_tree);
+  std::filesystem::remove(path_out_dfs_tree);
 
   try {
     for (Representation r : {Representation::List, Representation::Matrix}) {
 
       if (r == Representation::List)
-        std::cout << "REPRESENTATION - LIST" << std::endl;
+        repr = "list";
       else
-        std::cout << "REPRESENTATION - MATRIX" << std::endl;
+        repr = "matrix";
 
-      std::unique_ptr<Graph> g = readGraph(path, Representation::List);
-      std::cout << "Graph created\n"
-                << "vertex Count n = " << g->n << "\n"
-                << "edge Count m = " << g->m << std::endl;
-
+      std::unique_ptr<Graph> g = readGraph(path_in, Representation::List);
       GraphStats stats = computeStats(*g);
-
-      std::cout << "min degree: " << stats.minDegree
-                << "\nmax degree: " << stats.maxDegree
-                << "\navg degree: " << stats.avgDegree
-                << "\nmedian degree: " << stats.medianDegree << std::endl;
-
       SearchTree bfsTree = bfs(*g, 1);
-
-      std::cout << "BFS" << std::endl;
-
-      for (int i = 1; i <= g->n; i++)
-        std::cout << "parent of " << i << ": " << bfsTree.parent[i]
-                  << std::endl;
-
-      for (int i = 1; i <= g->n; i++)
-        std::cout << "level of " << i << ": " << bfsTree.level[i] << std::endl;
-
       SearchTree dfsTree = dfs(*g, 1);
 
-      std::cout << "DFS" << std::endl;
-
-      for (int i = 1; i <= g->n; i++)
-        std::cout << "parent of " << i << ": " << dfsTree.parent[i]
-                  << std::endl;
-
-      for (int i = 1; i <= g->n; i++)
-        std::cout << "level of " << i << ": " << dfsTree.level[i] << std::endl;
+      writeStats(path_out_stats, repr, stats);
+      writeSearchTree(path_out_bfs_tree, repr, bfsTree);
+      writeSearchTree(path_out_dfs_tree, repr, dfsTree);
     }
   } catch (const std::exception &e) {
     std::cerr << "error: " << e.what() << std::endl;

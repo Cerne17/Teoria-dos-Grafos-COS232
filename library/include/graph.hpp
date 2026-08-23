@@ -2,14 +2,39 @@
 #include <string>
 #include <vector>
 
-struct Graph {
-  int n;                             // # of vertexes
-  int m;                             // # of edges
-  std::vector<std::vector<int>> adj; // adjacency list, 1-indexed
+class Graph {
+public:
+  int n; // # of vertexes
+  int m; // # of edges
 
-  explicit Graph(int vertexCount);
-  void addEdge(int u, int v);
-  int degree(int u) const;
+  explicit Graph(int vertexCount) : n(vertexCount), m(0) {}
+  virtual ~Graph() = default;
+
+  virtual void addEdge(int u, int v) = 0;
+  virtual int degree(int u) const = 0;
+  virtual std::vector<int> neighbors(int u) const = 0;
+};
+
+class AdjacencyList : public Graph {
+public:
+  std::vector<std::vector<int>> adj;
+
+  explicit AdjacencyList(int vertexCount);
+
+  void addEdge(int u, int v) override;
+  int degree(int u) const override;
+  std::vector<int> neighbors(int u) const override;
+};
+
+class AdjacencyMatrix : public Graph {
+public:
+  std::vector<std::vector<char>> matrix;
+
+  explicit AdjacencyMatrix(int vertexCount);
+
+  void addEdge(int u, int v) override;
+  int degree(int u) const override;
+  std::vector<int> neighbors(int u) const override;
 };
 
 Graph readGraph(const std::string &path);

@@ -1,3 +1,3 @@
 graphName, graphSize, graphEdges, minDegree, maxDegree, avgDegree, medianDegree
-list, 5, 5, 1, 4, 2, 2
-matrix, 5, 5, 1, 4, 2, 2
+list, 10, 9, 1, 4, 1.8, 2
+matrix, 10, 9, 1, 4, 1.8, 2

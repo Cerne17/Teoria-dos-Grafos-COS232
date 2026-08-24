@@ -70,3 +70,5 @@ void writeStats(const std::string &path, const std::string &graphName,
                 const GraphStats &stats);
 void writeSearchTree(const std::string &path, const std::string &graphName,
                      const SearchTree &tree);
+
+std::vector<SearchTree> getComponents(const Graph &g);

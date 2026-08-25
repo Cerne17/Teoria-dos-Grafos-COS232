@@ -1,0 +1,2 @@
+-I../library/include
+-std=c++17

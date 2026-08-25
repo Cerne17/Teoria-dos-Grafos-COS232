@@ -64,7 +64,11 @@ struct SearchTree {
 
 SearchTree bfs(const Graph &g, int source);
 
+void bfsExploration(const Graph &g, int source);
+
 SearchTree dfs(const Graph &g, int source);
+
+void dfsExploration(const Graph &g, int source);
 
 void writeStats(const std::string &path, const std::string &graphName,
                 const GraphStats &stats);

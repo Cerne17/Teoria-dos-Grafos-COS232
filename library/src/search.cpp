@@ -1,5 +1,6 @@
 #include "graph.hpp"
 #include <cassert>
+#include <cmath>
 #include <queue>
 #include <stack>
 #include <utility>
@@ -30,6 +31,26 @@ SearchTree bfs(const Graph &g, int source) {
     }
   }
   return SearchTree{parent, level};
+}
+
+void bfsExploration(const Graph &g, int source) {
+  std::queue<int> q;
+  std::vector<bool> visited(g.n + 1, false);
+
+  q.push(source);
+  visited[source] = true;
+
+  while (!q.empty()) {
+    int current = q.front();
+    q.pop();
+
+    for (auto v : g.neighbors(current)) {
+      if (!visited[v]) {
+        q.push(v);
+        visited[v] = true;
+      }
+    }
+  }
 }
 
 SearchTree dfs(const Graph &g, int source) {
@@ -66,4 +87,23 @@ SearchTree dfs(const Graph &g, int source) {
     }
   }
   return SearchTree{parent, level};
+}
+
+void dfsExploration(const Graph &g, int source) {
+  std::stack<int> s;
+  std::vector<bool> visited(g.n + 1, false);
+
+  s.push(source);
+
+  while (!s.empty()) {
+    int current = s.top();
+    s.pop();
+    if (!visited[current]) {
+      visited[current] = true;
+      for (auto v : g.neighbors(current)) {
+        if (!visited[v])
+          s.push(v);
+      }
+    }
+  }
 }

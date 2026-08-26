@@ -47,13 +47,14 @@ void writeStats(const std::string &path, const std::string &graphName,
   if (needHeader)
     out << "graphName, graphSize, graphEdges, minDegree, maxDegree, avgDegree, "
            "medianDegree, componentsAmount, largestComponentSize, "
-           "smallestComponentSize"
+           "smallestComponentSize, exactDiameter, approximateDiameter"
         << "\n";
 
   out << graphName << ", " << stats.n << ", " << stats.m << ", "
       << stats.minDegree << ", " << stats.maxDegree << ", " << stats.avgDegree
       << ", " << stats.medianDegree << ", " << stats.componentsAmount << ", "
       << stats.largestComponentSize << ", " << stats.smallestComponentSize
+      << ", " << stats.exactDiameter << ", " << stats.approximateDiameter
       << "\n";
 }
 

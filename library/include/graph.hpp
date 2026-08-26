@@ -56,6 +56,8 @@ struct GraphStats {
   int componentsAmount;
   int largestComponentSize;
   int smallestComponentSize;
+  int exactDiameter;
+  int approximateDiameter;
 };
 
 GraphStats computeStats(const Graph &g);
@@ -85,3 +87,7 @@ std::vector<std::vector<int>> getComponentsByBreadth(const Graph &g);
 std::vector<std::vector<int>> getComponentsByDepth(const Graph &g);
 
 int getDistance(const Graph &g, const int u, const int v);
+
+int getExactDiameter(const Graph &g);
+
+int getApproximateDiameter(const Graph &g);

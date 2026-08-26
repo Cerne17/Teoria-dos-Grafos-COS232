@@ -108,3 +108,35 @@ void dfsExploration(const Graph &g, int source) {
     }
   }
 }
+
+int getExactDiameter(const Graph &g) {
+  int maxDistance = 0;
+  for (int i = 1; i <= g.n; i++) {
+    SearchTree tree = bfs(g, i);
+    for (int j = 1; j <= g.n; j++) {
+      if (tree.level[j] > maxDistance)
+        maxDistance = tree.level[j];
+    }
+  }
+  return maxDistance;
+}
+
+int getApproximateDiameter(const Graph &g) {
+  std::vector<std::vector<int>> components = getComponentsByBreadth(g);
+  SearchTree tree = bfs(g, components.front().front());
+  int maxLevel = 0;
+  int nextTarget = 0;
+  for (int i = 2; i <= g.n; i++) {
+    if (tree.level[i] >= maxLevel) {
+      maxLevel = tree.level[i];
+      nextTarget = i;
+    }
+  }
+  maxLevel = 0;
+  tree = bfs(g, nextTarget);
+  for (int i = 1; i <= g.n; i++) {
+    if (tree.level[i] > maxLevel)
+      maxLevel = tree.level[i];
+  }
+  return maxLevel;
+}

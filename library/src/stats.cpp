@@ -6,11 +6,13 @@ GraphStats computeStats(const Graph &g) {
   int n = g.n;
   int m = g.m;
 
-  // TODO: ENABLE CHOICE FOR USER: BREADTH VS. DEPTH
   std::vector<std::vector<int>> components = getComponentsByBreadth(g);
   int componentsAmount = static_cast<int>(components.size());
   int largestComponentSize = static_cast<int>(components.front().size());
   int smallestComponentSize = static_cast<int>(components.back().size());
+
+  int exactDiameter = getExactDiameter(g);
+  int approximateDiameter = getApproximateDiameter(g);
 
   std::vector<int> degrees;
   degrees.reserve(n);
@@ -38,5 +40,7 @@ GraphStats computeStats(const Graph &g) {
                     medianDegree,
                     componentsAmount,
                     largestComponentSize,
-                    smallestComponentSize};
+                    smallestComponentSize,
+                    exactDiameter,
+                    approximateDiameter};
 }

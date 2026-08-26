@@ -1,21 +1,41 @@
 graphName, node, componentId
-list, 1, 0
-list, 2, 0
-list, 3, 0
-list, 4, 0
-list, 5, 0
-list, 6, 1
-list, 7, 1
-list, 8, 1
-list, 9, 2
-list, 10, 2
-matrix, 1, 0
-matrix, 2, 0
-matrix, 3, 0
-matrix, 4, 0
-matrix, 5, 0
-matrix, 6, 1
-matrix, 7, 1
-matrix, 8, 1
-matrix, 9, 2
-matrix, 10, 2
+list breadth, 1, 0
+list breadth, 2, 0
+list breadth, 5, 0
+list breadth, 3, 0
+list breadth, 4, 0
+list breadth, 8, 1
+list breadth, 9, 1
+list breadth, 10, 1
+list breadth, 6, 2
+list breadth, 7, 2
+list depth, 1, 0
+list depth, 5, 0
+list depth, 4, 0
+list depth, 3, 0
+list depth, 2, 0
+list depth, 8, 1
+list depth, 9, 1
+list depth, 10, 1
+list depth, 6, 2
+list depth, 7, 2
+matrix breadth, 1, 0
+matrix breadth, 2, 0
+matrix breadth, 5, 0
+matrix breadth, 3, 0
+matrix breadth, 4, 0
+matrix breadth, 8, 1
+matrix breadth, 9, 1
+matrix breadth, 10, 1
+matrix breadth, 6, 2
+matrix breadth, 7, 2
+matrix depth, 1, 0
+matrix depth, 5, 0
+matrix depth, 4, 0
+matrix depth, 3, 0
+matrix depth, 2, 0
+matrix depth, 8, 1
+matrix depth, 9, 1
+matrix depth, 10, 1
+matrix depth, 6, 2
+matrix depth, 7, 2

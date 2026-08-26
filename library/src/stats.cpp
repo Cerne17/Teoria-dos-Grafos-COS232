@@ -7,7 +7,10 @@ GraphStats computeStats(const Graph &g) {
   int m = g.m;
 
   // TODO: ENABLE CHOICE FOR USER: BREADTH VS. DEPTH
-  int componentsAmount = size(getComponentsByBreadth(g));
+  std::vector<std::vector<int>> components = getComponentsByBreadth(g);
+  int componentsAmount = size(components);
+  int largestComponentSize = size(components.front());
+  int smallestComponentSize = size(components.back());
 
   std::vector<int> degrees;
   degrees.reserve(n);
@@ -27,6 +30,13 @@ GraphStats computeStats(const Graph &g) {
     medianDegree = (degrees[n / 2 - 1] + degrees[n / 2]) / 2.0;
   }
 
-  return GraphStats{
-      n, m, minDegree, maxDegree, avgDegree, medianDegree, componentsAmount};
+  return GraphStats{n,
+                    m,
+                    minDegree,
+                    maxDegree,
+                    avgDegree,
+                    medianDegree,
+                    componentsAmount,
+                    largestComponentSize,
+                    smallestComponentSize};
 }

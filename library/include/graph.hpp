@@ -54,6 +54,8 @@ struct GraphStats {
   double avgDegree;
   double medianDegree;
   int componentsAmount;
+  int largestComponentSize;
+  int smallestComponentSize;
 };
 
 GraphStats computeStats(const Graph &g);
@@ -76,7 +78,7 @@ void writeStats(const std::string &path, const std::string &graphName,
 void writeSearchTree(const std::string &path, const std::string &graphName,
                      const SearchTree &tree);
 void writeComponents(const std::string &path, const std::string &graphName,
-                     const std::vector<std::vector<int>> components);
+                     const std::vector<std::vector<int>> &components);
 
 std::vector<std::vector<int>> getComponentsByBreadth(const Graph &g);
 

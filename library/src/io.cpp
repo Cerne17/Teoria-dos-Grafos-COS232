@@ -46,12 +46,15 @@ void writeStats(const std::string &path, const std::string &graphName,
       !std::filesystem::exists(path) || std::filesystem::file_size(path) == 0;
   if (needHeader)
     out << "graphName, graphSize, graphEdges, minDegree, maxDegree, avgDegree, "
-           "medianDegree, componentsAmount"
+           "medianDegree, componentsAmount, largestComponentSize, "
+           "smallestComponentSize"
         << "\n";
 
   out << graphName << ", " << stats.n << ", " << stats.m << ", "
       << stats.minDegree << ", " << stats.maxDegree << ", " << stats.avgDegree
-      << ", " << stats.medianDegree << ", " << stats.componentsAmount << "\n";
+      << ", " << stats.medianDegree << ", " << stats.componentsAmount << ", "
+      << stats.largestComponentSize << ", " << stats.smallestComponentSize
+      << "\n";
 }
 
 void writeSearchTree(const std::string &path, const std::string &graphName,
@@ -73,7 +76,7 @@ void writeSearchTree(const std::string &path, const std::string &graphName,
 }
 
 void writeComponents(const std::string &path, const std::string &graphName,
-                     const std::vector<std::vector<int>> components) {
+                     const std::vector<std::vector<int>> &components) {
   std::ofstream out(path, std::ios::app);
 
   if (!out)
@@ -84,7 +87,7 @@ void writeComponents(const std::string &path, const std::string &graphName,
   if (needHeader)
     out << "graphName, node, componentId" << "\n";
 
-  for (int i = 0; i < static_cast<int>(size(components)); i++) {
+  for (int i = 0; i < static_cast<int>(components.size()); i++) {
     for (auto v : components[i]) {
       out << graphName << ", " << v << ", " << i << "\n";
     }

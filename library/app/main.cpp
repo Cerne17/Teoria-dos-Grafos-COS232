@@ -37,7 +37,9 @@ int main() {
       writeStats(path_out_stats, repr, stats);
       writeSearchTree(path_out_bfs_tree, repr, bfsTree);
       writeSearchTree(path_out_dfs_tree, repr, dfsTree);
-      writeComponents(path_out_components, repr, breadthComponents);
+      writeComponents(path_out_components, repr + " breadth",
+                      breadthComponents);
+      writeComponents(path_out_components, repr + " depth", depthComponents);
     }
   } catch (const std::exception &e) {
     std::cerr << "error: " << e.what() << std::endl;

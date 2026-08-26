@@ -83,3 +83,5 @@ void writeComponents(const std::string &path, const std::string &graphName,
 std::vector<std::vector<int>> getComponentsByBreadth(const Graph &g);
 
 std::vector<std::vector<int>> getComponentsByDepth(const Graph &g);
+
+int getDistance(const Graph &g, const int u, const int v);

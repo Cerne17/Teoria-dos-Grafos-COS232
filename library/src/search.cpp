@@ -10,11 +10,12 @@ SearchTree bfs(const Graph &g, int source) {
 
   std::vector<bool> visited(g.n + 1, false);
   std::vector<int> parent(g.n + 1, 0);
-  std::vector<int> level(g.n + 1, 0);
+  std::vector<int> level(g.n + 1, -1);
   std::queue<int> q;
 
   visited[source] = true;
   q.push(source);
+  level[source] = 0;
 
   while (!q.empty()) {
     int current = q.front();
@@ -57,10 +58,11 @@ SearchTree dfs(const Graph &g, int source) {
 
   std::vector<bool> visited(g.n + 1, false);
   std::vector<int> parent(g.n + 1, 0);
-  std::vector<int> level(g.n + 1, 0);
+  std::vector<int> level(g.n + 1, -1);
   std::stack<std::pair<int, int>> s;
 
   s.push({source, 0});
+  level[source] = 0;
 
   while (!s.empty()) {
     auto top = s.top();

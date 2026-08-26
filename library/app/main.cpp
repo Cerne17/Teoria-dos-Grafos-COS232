@@ -26,7 +26,7 @@ int main() {
       else
         repr = "matrix";
 
-      std::unique_ptr<Graph> g = readGraph(path_in, Representation::List);
+      std::unique_ptr<Graph> g = readGraph(path_in, r);
       GraphStats stats = computeStats(*g);
       SearchTree bfsTree = bfs(*g, 1);
       SearchTree dfsTree = dfs(*g, 1);

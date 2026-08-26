@@ -1,6 +1,5 @@
 #include "graph.hpp"
 #include <cassert>
-#include <cmath>
 #include <queue>
 #include <stack>
 #include <utility>

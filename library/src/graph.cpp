@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
+#include <vector>
 
 AdjacencyList::AdjacencyList(int vertexCount)
     : Graph(vertexCount), adj(vertexCount + 1) {}
@@ -30,13 +32,14 @@ void AdjacencyList::finalize() {
 }
 
 AdjacencyMatrix::AdjacencyMatrix(int vertexCount)
-    : Graph(vertexCount), matrix(vertexCount + 1) {}
+    : Graph(vertexCount),
+      matrix(vertexCount + 1, std::vector<char>(vertexCount + 1, 0)) {}
 
 void AdjacencyMatrix::addEdge(int u, int v) {
   assert(u >= 1 && u <= n && "addEdge: u out of range");
   assert(v >= 1 && v <= n && "addEdge: v out of range");
-  matrix[u][v] = '1';
-  matrix[v][u] = '1';
+  matrix[u][v] = 1;
+  matrix[v][u] = 1;
   m++;
 }
 

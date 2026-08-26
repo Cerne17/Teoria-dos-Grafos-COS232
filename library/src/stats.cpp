@@ -8,9 +8,9 @@ GraphStats computeStats(const Graph &g) {
 
   // TODO: ENABLE CHOICE FOR USER: BREADTH VS. DEPTH
   std::vector<std::vector<int>> components = getComponentsByBreadth(g);
-  int componentsAmount = size(components);
-  int largestComponentSize = size(components.front());
-  int smallestComponentSize = size(components.back());
+  int componentsAmount = static_cast<int>(components.size());
+  int largestComponentSize = static_cast<int>(components.front().size());
+  int smallestComponentSize = static_cast<int>(components.back().size());
 
   std::vector<int> degrees;
   degrees.reserve(n);

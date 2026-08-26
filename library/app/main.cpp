@@ -11,10 +11,12 @@ int main() {
   std::string path_out_bfs_tree = "data/bfs_tree.csv";
   std::string path_out_dfs_tree = "data/dfs_tree.csv";
   std::string repr;
+  std::string path_out_components = "data/components.csv";
 
   std::filesystem::remove(path_out_stats);
   std::filesystem::remove(path_out_bfs_tree);
   std::filesystem::remove(path_out_dfs_tree);
+  std::filesystem::remove(path_out_components);
 
   try {
     for (Representation r : {Representation::List, Representation::Matrix}) {
@@ -28,24 +30,14 @@ int main() {
       GraphStats stats = computeStats(*g);
       SearchTree bfsTree = bfs(*g, 1);
       SearchTree dfsTree = dfs(*g, 1);
+      std::vector<std::vector<int>> breadthComponents =
+          getComponentsByBreadth(*g);
+      std::vector<std::vector<int>> depthComponents = getComponentsByDepth(*g);
 
       writeStats(path_out_stats, repr, stats);
       writeSearchTree(path_out_bfs_tree, repr, bfsTree);
       writeSearchTree(path_out_dfs_tree, repr, dfsTree);
-
-      std::vector<SearchTree> components = getComponents(*g);
-
-      int k = 1;
-      std::cout << "EXAMPLE COMPONENTS FOR REPR. " << repr << "\n";
-      for (auto component : components) {
-        std::cout << "Component #" << k << ":\n";
-        std::cout << "NODE | PARENT | LEVEL" << "\n";
-        for (int i = 1; i <= g->n; i++) {
-          std::cout << i << "    | " << component.parent[i] << "      | "
-                    << component.level[i] << "\n";
-        }
-        k++;
-      }
+      writeComponents(path_out_components, repr, breadthComponents);
     }
   } catch (const std::exception &e) {
     std::cerr << "error: " << e.what() << std::endl;

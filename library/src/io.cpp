@@ -46,12 +46,12 @@ void writeStats(const std::string &path, const std::string &graphName,
       !std::filesystem::exists(path) || std::filesystem::file_size(path) == 0;
   if (needHeader)
     out << "graphName, graphSize, graphEdges, minDegree, maxDegree, avgDegree, "
-           "medianDegree"
+           "medianDegree, componentsAmount"
         << "\n";
 
   out << graphName << ", " << stats.n << ", " << stats.m << ", "
       << stats.minDegree << ", " << stats.maxDegree << ", " << stats.avgDegree
-      << ", " << stats.medianDegree << "\n";
+      << ", " << stats.medianDegree << ", " << stats.componentsAmount << "\n";
 }
 
 void writeSearchTree(const std::string &path, const std::string &graphName,
@@ -69,5 +69,24 @@ void writeSearchTree(const std::string &path, const std::string &graphName,
   for (int v = 1; v <= static_cast<int>(tree.parent.size()) - 1; ++v) {
     out << graphName << ", " << v << ", " << tree.parent[v] << ", "
         << tree.level[v] << "\n";
+  }
+}
+
+void writeComponents(const std::string &path, const std::string &graphName,
+                     const std::vector<std::vector<int>> components) {
+  std::ofstream out(path, std::ios::app);
+
+  if (!out)
+    throw std::runtime_error("could not write file " + path);
+
+  bool needHeader =
+      !std::filesystem::exists(path) || std::filesystem::file_size(path) == 0;
+  if (needHeader)
+    out << "graphName, node, componentId" << "\n";
+
+  for (int i = 0; i < static_cast<int>(size(components)); i++) {
+    for (auto v : components[i]) {
+      out << graphName << ", " << v << ", " << i << "\n";
+    }
   }
 }

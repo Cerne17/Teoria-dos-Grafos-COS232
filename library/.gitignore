@@ -1,1 +1,16 @@
+# Compiled objects and the executable
 *.o
+app/graphs
+
+# macOS debug symbol bundles
+*.dSYM/
+
+# macOS archive/metadata cruft
+__MACOSX/
+.DS_Store
+
+# Generated output CSVs (produced by running the program)
+data/stats.csv
+data/bfs_tree.csv
+data/dfs_tree.csv
+data/components.csv

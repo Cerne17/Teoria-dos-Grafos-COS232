@@ -6,7 +6,7 @@
 
 int main() {
   // std::string path_in = "data/graph.txt";
-  std::string path_in = "data/multiple_components_graph.txt";
+  std::string path_in = "data/grafo_1.txt";
   std::string path_out_stats = "data/stats.csv";
   std::string path_out_bfs_tree = "data/bfs_tree.csv";
   std::string path_out_dfs_tree = "data/dfs_tree.csv";
@@ -40,6 +40,8 @@ int main() {
       writeComponents(path_out_components, repr + " breadth",
                       breadthComponents);
       writeComponents(path_out_components, repr + " depth", depthComponents);
+
+      std::cout << "Done for " << repr << "\n";
     }
   } catch (const std::exception &e) {
     std::cerr << "error: " << e.what() << std::endl;

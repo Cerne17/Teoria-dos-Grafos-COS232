@@ -1,6 +1,7 @@
 # Compiled objects and the executable
 *.o
 app/graphs
+app/graphs_release
 
 # macOS debug symbol bundles
 *.dSYM/

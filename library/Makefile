@@ -10,6 +10,9 @@ all: app/graphs
 app/graphs: $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+benchmark: app/benchmark.cpp src/graph.cpp src/io.cpp src/search.cpp src/stats.cpp src/components.cpp
+	$(CXX) -std=c++17 -Iinclude -O2 $^ -o app/benchmark
+
 %.o: %.cpp include/graph.hpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 

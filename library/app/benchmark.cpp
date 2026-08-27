@@ -90,8 +90,10 @@ static void runReport(const Graph &g, const std::string &graphName,
               << "," << getDistance(g, a, b) << "\n";
   }
 
+  const int EXACT_DIAMETER_LIMIT = 2000; // guard O(n*(n+m)) blowup
+
   // Q6: connected components — count, largest, smallest.
-  GraphStats stats = computeStats(g);
+  GraphStats stats = computeStats(g, EXACT_DIAMETER_LIMIT);
   std::cout << graphName << "," << repArg << ",component_count,"
             << stats.componentsAmount << "\n";
   std::cout << graphName << "," << repArg << ",component_largest,"
@@ -99,14 +101,14 @@ static void runReport(const Graph &g, const std::string &graphName,
   std::cout << graphName << "," << repArg << ",component_smallest,"
             << stats.smallestComponentSize << "\n";
 
-  // Q7: diameter — approximate always; exact only when affordable.
+  // Q7: diameter — both already computed by computeStats above; recomputing
+  // them here would double the work. exactDiameter is -1 when it was skipped.
   std::cout << graphName << "," << repArg << ",diameter_approx,"
-            << getApproximateDiameter(g) << "\n";
+            << stats.approximateDiameter << "\n";
 
-  const int EXACT_DIAMETER_LIMIT = 2000; // guard O(n*(n+m)) blowup
-  if (g.n <= EXACT_DIAMETER_LIMIT) {
+  if (stats.exactDiameter >= 0) {
     std::cout << graphName << "," << repArg << ",diameter_exact,"
-              << getExactDiameter(g) << "\n";
+              << stats.exactDiameter << "\n";
   } else {
     std::cerr << "skipping exact diameter (n=" << g.n << " > "
               << EXACT_DIAMETER_LIMIT << ")\n";

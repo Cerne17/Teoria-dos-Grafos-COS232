@@ -60,7 +60,11 @@ struct GraphStats {
   int approximateDiameter;
 };
 
-GraphStats computeStats(const Graph &g);
+// exactDiameterLimit: skip the O(n*(n+m)) exact diameter when n exceeds it.
+// Pass a non-positive value to always compute it. When skipped, exactDiameter
+// comes back as -1 — the same "undefined" convention already used by level
+// and getDistance.
+GraphStats computeStats(const Graph &g, int exactDiameterLimit = 0);
 
 struct SearchTree {
   std::vector<int> parent;

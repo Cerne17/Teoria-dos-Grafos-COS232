@@ -90,10 +90,8 @@ static void runReport(const Graph &g, const std::string &graphName,
               << "," << getDistance(g, a, b) << "\n";
   }
 
-  const int EXACT_DIAMETER_LIMIT = 2000; // guard O(n*(n+m)) blowup
-
   // Q6: connected components — count, largest, smallest.
-  GraphStats stats = computeStats(g, EXACT_DIAMETER_LIMIT);
+  GraphStats stats = computeStats(g, kExactDiameterBudget);
   std::cout << graphName << "," << repArg << ",component_count,"
             << stats.componentsAmount << "\n";
   std::cout << graphName << "," << repArg << ",component_largest,"
@@ -110,8 +108,8 @@ static void runReport(const Graph &g, const std::string &graphName,
     std::cout << graphName << "," << repArg << ",diameter_exact,"
               << stats.exactDiameter << "\n";
   } else {
-    std::cerr << "skipping exact diameter (n=" << g.n << " > "
-              << EXACT_DIAMETER_LIMIT << ")\n";
+    std::cerr << "skipping exact diameter (n*(n+m) over the "
+              << kExactDiameterBudget << " budget)\n";
   }
 }
 

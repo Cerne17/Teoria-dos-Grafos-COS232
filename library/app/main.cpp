@@ -95,7 +95,7 @@ static void processGraph(const std::string &path_in,
     std::string repr = (r == Representation::List) ? "list" : "matrix";
 
     std::unique_ptr<Graph> g = readGraph(path_in, r);
-    GraphStats stats = computeStats(*g);
+    GraphStats stats = computeStats(*g, kExactDiameterBudget);
     SearchTree bfsTree = bfs(*g, 1);
     SearchTree dfsTree = dfs(*g, 1);
     std::vector<std::vector<int>> breadthComponents = getComponentsByBreadth(*g);
@@ -107,6 +107,8 @@ static void processGraph(const std::string &path_in,
     writeComponents(path_out_components, repr + " breadth", breadthComponents);
     writeComponents(path_out_components, repr + " depth", depthComponents);
 
+    if (stats.exactDiameter < 0)
+      std::cout << "  exact diameter over budget, approximation only\n";
     std::cout << "Done for " << name << " (" << repr << ")\n";
   }
 }

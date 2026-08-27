@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <vector>
 
-GraphStats computeStats(const Graph &g, int exactDiameterLimit) {
+GraphStats computeStats(const Graph &g, long long exactDiameterBudget) {
   int n = g.n;
   int m = g.m;
 
@@ -11,11 +11,15 @@ GraphStats computeStats(const Graph &g, int exactDiameterLimit) {
   int largestComponentSize = static_cast<int>(components.front().size());
   int smallestComponentSize = static_cast<int>(components.back().size());
 
-  // The exact diameter is O(n*(n+m)); skip it when the caller says the graph
-  // is too big to afford it.
-  int exactDiameter = (exactDiameterLimit > 0 && n > exactDiameterLimit)
-                          ? -1
-                          : getExactDiameter(g);
+  // The exact diameter costs about n*(n+m) edge inspections; skip it when that
+  // is over the caller's budget. The product, not n alone, is what makes a
+  // dense graph unaffordable.
+  long long exactDiameterWork =
+      static_cast<long long>(n) * (static_cast<long long>(n) + m);
+  int exactDiameter =
+      (exactDiameterBudget > 0 && exactDiameterWork > exactDiameterBudget)
+          ? -1
+          : getExactDiameter(g);
   // Reuse the components computed above instead of sweeping the graph again.
   int approximateDiameter = getApproximateDiameter(g, components);
 

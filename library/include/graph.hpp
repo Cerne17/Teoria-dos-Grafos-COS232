@@ -156,14 +156,23 @@ struct GraphStats {
   int componentsAmount;
   int largestComponentSize;
   int smallestComponentSize;
-  int exactDiameter;       // -1 when skipped by exactDiameterLimit
+  int exactDiameter;       // -1 when skipped by exactDiameterBudget
   int approximateDiameter; // lower bound; see getApproximateDiameter
 };
 
+// Work budget for the exact diameter, in units of n*(n+m) — the number of
+// edge inspections a full all-pairs BFS sweep performs. Roughly six seconds in
+// an -O2 build on a laptop. A graph over budget reports -1 for its exact
+// diameter and is described by getApproximateDiameter alone. Budgeting the
+// product rather than n is what catches dense graphs: two graphs can share an
+// n and still differ by an order of magnitude in cost.
+constexpr long long kExactDiameterBudget = 2000000000LL;
+
 // Computes every statistic the assignment asks for.
-// Args:    g                   graph to measure
-//          exactDiameterLimit  skip the exact diameter when n exceeds it; pass
-//                              a non-positive value to always compute it
+// Args:    g                    graph to measure
+//          exactDiameterBudget  skip the exact diameter when n*(n+m) exceeds
+//                               it; pass a non-positive value to always
+//                               compute it
 // Returns: a fully populated GraphStats; exactDiameter is -1 when it was
 //          skipped, the same "undefined" convention used by level and
 //          getDistance
@@ -172,7 +181,7 @@ struct GraphStats {
 //          when it is skipped, the degree loop and the sort dominate —
 //            list   O(n log n + m)     matrix O(n^2)
 //          Space: O(n + k)
-GraphStats computeStats(const Graph &g, int exactDiameterLimit = 0);
+GraphStats computeStats(const Graph &g, long long exactDiameterBudget = 0);
 
 // Result of a traversal rooted at one vertex. Both vectors are sized n+1.
 struct SearchTree {

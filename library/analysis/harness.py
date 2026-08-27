@@ -25,10 +25,18 @@ def run_memory(graph_path: Path, representation: str) -> float:
         [str(BINARY), str(graph_path), representation, "mem"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
     )
     line = proc.stdout.readline()
-    assert line.strip() == "READY", f"expected READY, got {line!r}"
+    if line.strip() != "READY":
+        # process died before signalling ready — surface its actual error
+        proc.wait()
+        err = proc.stderr.read()
+        raise RuntimeError(
+            f"benchmark mem failed for {graph_path} ({representation}): "
+            f"{err.strip() or 'no output, exit ' + str(proc.returncode)}"
+        )
 
     rss_bytes = psutil.Process(proc.pid).memory_info().rss
 
@@ -37,6 +45,16 @@ def run_memory(graph_path: Path, representation: str) -> float:
     proc.wait()
 
     return rss_bytes / (1024 * 1024)
+
+
+def run_report(graph_path: Path, representation: str) -> str:
+    result = subprocess.run(
+        [str(BINARY), str(graph_path), representation, "report"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout
 
 
 def collect(graph_files: list[str]) -> pd.DataFrame:
@@ -77,6 +95,22 @@ def collect(graph_files: list[str]) -> pd.DataFrame:
                     }
                 )
 
+            # --- report: parents, distances, components, diameter ---
+            for line in run_report(graph_path, rep).strip().splitlines():
+                if not line:
+                    continue
+                parts = line.split(",")
+                metric = parts[2]
+                value = float(parts[3])
+                rows.append(
+                    {
+                        "graph": name,
+                        "representation": rep,
+                        "metric": metric,
+                        "value": value,
+                    }
+                )
+
     return pd.DataFrame(rows)
 
 
@@ -88,8 +122,8 @@ if __name__ == "__main__":
         # "grafo_4.txt",
         # "grafo_5.txt",
     ]
-    # grafo_2..5 commented out during development (large, slow)
 
     df = collect(graph_list)
     print(df.to_string(index=False))
-    df.to_csv(DATA / "analysis_results.csv", index=False)
+    out = DATA / "results.csv"
+    df.to_csv(out, mode="a", header=not out.exists(), index=False)

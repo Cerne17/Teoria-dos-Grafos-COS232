@@ -57,73 +57,77 @@ def run_report(graph_path: Path, representation: str) -> str:
     return result.stdout
 
 
-def collect(graph_files: list[str]) -> pd.DataFrame:
+def representations_for(spec: str) -> list[str]:
+    if spec == "both":
+        return ["list", "matrix"]
+    if spec in ("list", "matrix"):
+        return [spec]
+    raise ValueError(f"unknown representation spec: {spec!r}")
+
+
+def collect_one(name: str, rep_spec: str) -> pd.DataFrame:
+    """Compute all rows for a single graph, per its representation spec."""
     rows = []
-    for graph_file in graph_files:
-        graph_path = DATA / graph_file
-        name = graph_file.replace(".txt", "")
+    graph_path = DATA / f"{name}.txt"
+    reps = representations_for(rep_spec)
 
-        for rep in ["list", "matrix"]:
-            # --- timing: parse the two CSV rows the binary printed ---
-            for line in run_timing(graph_path, rep).strip().splitlines():
-                parts = line.split(",")
-                algo = parts[2]  # "bfs" | "dfs"
-                avg = float(parts[3])
-                rows.append(
-                    {
-                        "graph": name,
-                        "representation": rep,
-                        "metric": f"{algo}_micros",
-                        "value": avg,
-                    }
-                )
+    for skipped in sorted({"list", "matrix"} - set(reps)):
+        rows.append(
+            {"graph": name, "representation": skipped, "metric": "skipped", "value": 1}
+        )
 
-            # --- memory: raw, baseline, and the isolated difference ---
-            mem_raw = run_memory(graph_path, rep)
-            mem_base = run_memory(BASELINE, rep)
-            for metric, value in [
-                ("memory_mb_raw", mem_raw),
-                ("memory_mb_baseline", mem_base),
-                ("memory_mb_graph", mem_raw - mem_base),
-            ]:
-                rows.append(
-                    {
-                        "graph": name,
-                        "representation": rep,
-                        "metric": metric,
-                        "value": value,
-                    }
-                )
-
-            # --- report: parents, distances, components, diameter ---
-            for line in run_report(graph_path, rep).strip().splitlines():
-                if not line:
-                    continue
-                parts = line.split(",")
-                metric = parts[2]
-                value = float(parts[3])
-                rows.append(
-                    {
-                        "graph": name,
-                        "representation": rep,
-                        "metric": metric,
-                        "value": value,
-                    }
-                )
+    for rep in reps:
+        # timing
+        for line in run_timing(graph_path, rep).strip().splitlines():
+            parts = line.split(",")
+            rows.append(
+                {
+                    "graph": name,
+                    "representation": rep,
+                    "metric": f"{parts[2]}_micros",
+                    "value": float(parts[3]),
+                }
+            )
+        # memory
+        mem_raw = run_memory(graph_path, rep)
+        mem_base = run_memory(BASELINE, rep)
+        for metric, value in [
+            ("memory_mb_raw", mem_raw),
+            ("memory_mb_baseline", mem_base),
+            ("memory_mb_graph", mem_raw - mem_base),
+        ]:
+            rows.append(
+                {"graph": name, "representation": rep, "metric": metric, "value": value}
+            )
+        # report
+        for line in run_report(graph_path, rep).strip().splitlines():
+            if not line:
+                continue
+            parts = line.split(",")
+            rows.append(
+                {
+                    "graph": name,
+                    "representation": rep,
+                    "metric": parts[2],
+                    "value": float(parts[3]),
+                }
+            )
 
     return pd.DataFrame(rows)
 
 
 if __name__ == "__main__":
-    graph_list = [
-        "grafo_1.txt",
-        # "grafo_2.txt",
-        # "grafo_3.txt",
-        # "grafo_4.txt",
-        # "grafo_5.txt",
-    ]
-
-    df = collect(graph_list)
-    print(df.to_string(index=False))
+    config = pd.read_csv(ROOT / "config.csv")
     out = DATA / "results.csv"
-    df.to_csv(out, mode="a", header=not out.exists(), index=False)
+
+    for _, cfg_row in config.iterrows():
+        name = cfg_row["graph"]
+        print(f"processing {name} ...", flush=True)
+        try:
+            df = collect_one(name, cfg_row["representation"])
+        except Exception as e:
+            print(f"  FAILED for {name}: {e}", flush=True)
+            continue
+        # dump this graph's rows immediately, appending to the growing file
+        df.to_csv(out, mode="a", header=not out.exists(), index=False)
+        print(f"  wrote {len(df)} rows for {name}", flush=True)

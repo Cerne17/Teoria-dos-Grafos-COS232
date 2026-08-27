@@ -1,0 +1,11 @@
+graph,representation,metric,value
+grafo_1,list,bfs_micros,546.12
+grafo_1,list,dfs_micros,953.36
+grafo_1,list,memory_mb_raw,3.53125
+grafo_1,list,memory_mb_baseline,1.359375
+grafo_1,list,memory_mb_graph,2.171875
+grafo_1,matrix,bfs_micros,41415.9
+grafo_1,matrix,dfs_micros,41994.2
+grafo_1,matrix,memory_mb_raw,106.234375
+grafo_1,matrix,memory_mb_baseline,1.359375
+grafo_1,matrix,memory_mb_graph,104.875

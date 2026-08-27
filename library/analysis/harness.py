@@ -92,4 +92,4 @@ if __name__ == "__main__":
 
     df = collect(graph_list)
     print(df.to_string(index=False))
-    df.to_csv(ROOT / "analysis" / "results.csv", index=False)
+    df.to_csv(DATA / "analysis_results.csv", index=False)

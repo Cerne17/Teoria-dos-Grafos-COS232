@@ -16,3 +16,6 @@ data/stats.csv
 data/bfs_tree.csv
 data/dfs_tree.csv
 data/components.csv
+
+# Assignment graph inputs (14 MB to 689 MB, distributed separately)
+data/grafo_*.txt

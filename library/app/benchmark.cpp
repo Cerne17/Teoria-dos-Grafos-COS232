@@ -19,10 +19,113 @@ static std::string cleanGraphName(const std::string &path) {
   return name;
 }
 
+// --- Timing: 100 BFS + 100 DFS, self-timed, algorithm-only. ---
+static void runTiming(const Graph &g, const std::string &graphName,
+                      const std::string &repArg) {
+  long long totalMicros = 0;
+  long long sink = 0;
+
+  for (int i = 0; i < 100; i++) {
+    int start = (i % g.n) + 1;
+
+    auto t0 = std::chrono::steady_clock::now();
+    SearchTree tree = bfs(g, start);
+    auto t1 = std::chrono::steady_clock::now();
+
+    totalMicros +=
+        std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    sink += tree.level[g.n];
+  }
+  double avgBfs = static_cast<double>(totalMicros) / 100.0;
+  std::cout << graphName << "," << repArg << ",bfs," << avgBfs << "\n";
+  std::cerr << "sink=" << sink << "\n";
+
+  totalMicros = 0;
+  sink = 0;
+
+  for (int i = 0; i < 100; i++) {
+    int start = (i % g.n) + 1;
+
+    auto t0 = std::chrono::steady_clock::now();
+    SearchTree tree = dfs(g, start);
+    auto t1 = std::chrono::steady_clock::now();
+
+    totalMicros +=
+        std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    sink += tree.level[g.n];
+  }
+  double avgDfs = static_cast<double>(totalMicros) / 100.0;
+  std::cout << graphName << "," << repArg << ",dfs," << avgDfs << "\n";
+  std::cerr << "sink=" << sink << "\n";
+}
+
+// --- Report: specific case-study answers (Q4-Q7). ---
+static void runReport(const Graph &g, const std::string &graphName,
+                      const std::string &repArg) {
+  std::vector<int> sources = {1, 2, 3};
+  std::vector<int> targets = {10, 20, 30};
+
+  // Q4: parents of targets in BFS/DFS trees rooted at each source.
+  for (int s : sources) {
+    if (s > g.n)
+      continue;
+    SearchTree bt = bfs(g, s);
+    SearchTree dt = dfs(g, s);
+    for (int t : targets) {
+      if (t > g.n)
+        continue;
+      std::cout << graphName << "," << repArg << ",bfs_parent_s" << s << "_t"
+                << t << "," << bt.parent[t] << "\n";
+      std::cout << graphName << "," << repArg << ",dfs_parent_s" << s << "_t"
+                << t << "," << dt.parent[t] << "\n";
+    }
+  }
+
+  // Q5: distances between specific pairs.
+  std::vector<std::pair<int, int>> pairs = {{10, 20}, {10, 30}, {20, 30}};
+  for (auto [a, b] : pairs) {
+    if (a > g.n || b > g.n)
+      continue;
+    std::cout << graphName << "," << repArg << ",distance_" << a << "_" << b
+              << "," << getDistance(g, a, b) << "\n";
+  }
+
+  // Q6: connected components — count, largest, smallest.
+  GraphStats stats = computeStats(g);
+  std::cout << graphName << "," << repArg << ",component_count,"
+            << stats.componentsAmount << "\n";
+  std::cout << graphName << "," << repArg << ",component_largest,"
+            << stats.largestComponentSize << "\n";
+  std::cout << graphName << "," << repArg << ",component_smallest,"
+            << stats.smallestComponentSize << "\n";
+
+  // Q7: diameter — approximate always; exact only when affordable.
+  std::cout << graphName << "," << repArg << ",diameter_approx,"
+            << getApproximateDiameter(g) << "\n";
+
+  const int EXACT_DIAMETER_LIMIT = 2000; // guard O(n*(n+m)) blowup
+  if (g.n <= EXACT_DIAMETER_LIMIT) {
+    std::cout << graphName << "," << repArg << ",diameter_exact,"
+              << getExactDiameter(g) << "\n";
+  } else {
+    std::cerr << "skipping exact diameter (n=" << g.n << " > "
+              << EXACT_DIAMETER_LIMIT << ")\n";
+  }
+}
+
+// --- Memory hold: signal ready, block until released, so an external
+//     observer can snapshot this process's RSS while it holds the graph. ---
+static void holdForMemory() {
+  std::cout << "READY\n";
+  std::cout.flush();
+  std::string dummy;
+  std::getline(std::cin, dummy);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 4) {
-    std::cerr
-        << "usage: benchmark <graphfile> <list|matrix> <time|mem|report>\n";
+    std::cerr << "usage: benchmark <graphfile> <list|matrix> "
+                 "<time|mem|report|all>\n";
     return 1;
   }
 
@@ -46,101 +149,20 @@ int main(int argc, char *argv[]) {
     std::unique_ptr<Graph> g = readGraph(graphFile, rep);
 
     if (mode == "time") {
-      long long totalMicros = 0;
-      long long sink = 0;
-
-      for (int i = 0; i < 100; i++) {
-        int start = (i % g->n) + 1;
-
-        auto t0 = std::chrono::steady_clock::now();
-        SearchTree tree = bfs(*g, start);
-        auto t1 = std::chrono::steady_clock::now();
-
-        totalMicros +=
-            std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0)
-                .count();
-        sink += tree.level[g->n];
-      }
-      double avgBfs = static_cast<double>(totalMicros) / 100.0;
-      std::cout << graphName << "," << repArg << ",bfs," << avgBfs << "\n";
-      std::cerr << "sink=" << sink << "\n";
-
-      totalMicros = 0;
-      sink = 0;
-
-      for (int i = 0; i < 100; i++) {
-        int start = (i % g->n) + 1;
-
-        auto t0 = std::chrono::steady_clock::now();
-        SearchTree tree = dfs(*g, start);
-        auto t1 = std::chrono::steady_clock::now();
-
-        totalMicros +=
-            std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0)
-                .count();
-        sink += tree.level[g->n];
-      }
-      double avgDfs = static_cast<double>(totalMicros) / 100.0;
-      std::cout << graphName << "," << repArg << ",dfs," << avgDfs << "\n";
-      std::cerr << "sink=" << sink << "\n";
+      runTiming(*g, graphName, repArg);
 
     } else if (mode == "mem") {
-      std::cout << "READY\n";
-      std::cout.flush();
-      std::string dummy;
-      std::getline(std::cin, dummy);
+      holdForMemory();
 
     } else if (mode == "report") {
-      std::vector<int> sources = {1, 2, 3};
-      std::vector<int> targets = {10, 20, 30};
+      runReport(*g, graphName, repArg);
 
-      // Q4: parents of targets in BFS/DFS trees rooted at each source.
-      // One BFS + one DFS per source; read all targets from each tree.
-      for (int s : sources) {
-        if (s > g->n)
-          continue;
-        SearchTree bt = bfs(*g, s);
-        SearchTree dt = dfs(*g, s);
-        for (int t : targets) {
-          if (t > g->n)
-            continue;
-          std::cout << graphName << "," << repArg << ",bfs_parent_s" << s
-                    << "_t" << t << "," << bt.parent[t] << "\n";
-          std::cout << graphName << "," << repArg << ",dfs_parent_s" << s
-                    << "_t" << t << "," << dt.parent[t] << "\n";
-        }
-      }
-
-      // Q5: distances between specific pairs.
-      std::vector<std::pair<int, int>> pairs = {{10, 20}, {10, 30}, {20, 30}};
-      for (auto [a, b] : pairs) {
-        if (a > g->n || b > g->n)
-          continue;
-        std::cout << graphName << "," << repArg << ",distance_" << a << "_" << b
-                  << "," << getDistance(*g, a, b) << "\n";
-      }
-
-      // Q6: connected components — count, largest, smallest.
-      GraphStats stats = computeStats(*g);
-      std::cout << graphName << "," << repArg << ",component_count,"
-                << stats.componentsAmount << "\n";
-      std::cout << graphName << "," << repArg << ",component_largest,"
-                << stats.largestComponentSize << "\n";
-      std::cout << graphName << "," << repArg << ",component_smallest,"
-                << stats.smallestComponentSize << "\n";
-
-      // Q7: diameter — approximate always; exact only when affordable.
-      std::cout << graphName << "," << repArg << ",diameter_approx,"
-                << getApproximateDiameter(*g) << "\n";
-
-      const int EXACT_DIAMETER_LIMIT = 2000; // guard O(n*(n+m)) blowup
-      if (g->n <= EXACT_DIAMETER_LIMIT) {
-        std::cout << graphName << "," << repArg << ",diameter_exact,"
-                  << getExactDiameter(*g) << "\n";
-      } else {
-        std::cerr << "skipping exact diameter (n=" << g->n << " > "
-                  << EXACT_DIAMETER_LIMIT << ")\n";
-      }
+    } else if (mode == "all") {
+      // Memory FIRST — snapshot the pristine graph before timing/report
+      // allocate their own structures.
+      holdForMemory();
+      runTiming(*g, graphName, repArg);
+      runReport(*g, graphName, repArg);
 
     } else {
       std::cerr << "unknown mode: " << mode << "\n";

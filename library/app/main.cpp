@@ -4,9 +4,8 @@
 #include <iostream>
 #include <string>
 
-int main() {
-  // std::string path_in = "data/graph.txt";
-  std::string path_in = "data/grafo_1.txt";
+int main(int argc, char *argv[]) {
+  std::string path_in = (argc > 1) ? argv[1] : "data/grafo_1.txt";
   std::string path_out_stats = "data/stats.csv";
   std::string path_out_bfs_tree = "data/bfs_tree.csv";
   std::string path_out_dfs_tree = "data/dfs_tree.csv";

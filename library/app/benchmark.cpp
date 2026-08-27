@@ -4,6 +4,8 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 // Strip directory and extension: "data/grafo_1.txt" -> "grafo_1"
 static std::string cleanGraphName(const std::string &path) {
@@ -19,7 +21,8 @@ static std::string cleanGraphName(const std::string &path) {
 
 int main(int argc, char *argv[]) {
   if (argc < 4) {
-    std::cerr << "usage: benchmark <graphfile> <list|matrix> <time|mem>\n";
+    std::cerr
+        << "usage: benchmark <graphfile> <list|matrix> <time|mem|report>\n";
     return 1;
   }
 
@@ -86,6 +89,58 @@ int main(int argc, char *argv[]) {
       std::cout.flush();
       std::string dummy;
       std::getline(std::cin, dummy);
+
+    } else if (mode == "report") {
+      std::vector<int> sources = {1, 2, 3};
+      std::vector<int> targets = {10, 20, 30};
+
+      // Q4: parents of targets in BFS/DFS trees rooted at each source.
+      // One BFS + one DFS per source; read all targets from each tree.
+      for (int s : sources) {
+        if (s > g->n)
+          continue;
+        SearchTree bt = bfs(*g, s);
+        SearchTree dt = dfs(*g, s);
+        for (int t : targets) {
+          if (t > g->n)
+            continue;
+          std::cout << graphName << "," << repArg << ",bfs_parent_s" << s
+                    << "_t" << t << "," << bt.parent[t] << "\n";
+          std::cout << graphName << "," << repArg << ",dfs_parent_s" << s
+                    << "_t" << t << "," << dt.parent[t] << "\n";
+        }
+      }
+
+      // Q5: distances between specific pairs.
+      std::vector<std::pair<int, int>> pairs = {{10, 20}, {10, 30}, {20, 30}};
+      for (auto [a, b] : pairs) {
+        if (a > g->n || b > g->n)
+          continue;
+        std::cout << graphName << "," << repArg << ",distance_" << a << "_" << b
+                  << "," << getDistance(*g, a, b) << "\n";
+      }
+
+      // Q6: connected components — count, largest, smallest.
+      GraphStats stats = computeStats(*g);
+      std::cout << graphName << "," << repArg << ",component_count,"
+                << stats.componentsAmount << "\n";
+      std::cout << graphName << "," << repArg << ",component_largest,"
+                << stats.largestComponentSize << "\n";
+      std::cout << graphName << "," << repArg << ",component_smallest,"
+                << stats.smallestComponentSize << "\n";
+
+      // Q7: diameter — approximate always; exact only when affordable.
+      std::cout << graphName << "," << repArg << ",diameter_approx,"
+                << getApproximateDiameter(*g) << "\n";
+
+      const int EXACT_DIAMETER_LIMIT = 2000; // guard O(n*(n+m)) blowup
+      if (g->n <= EXACT_DIAMETER_LIMIT) {
+        std::cout << graphName << "," << repArg << ",diameter_exact,"
+                  << getExactDiameter(*g) << "\n";
+      } else {
+        std::cerr << "skipping exact diameter (n=" << g->n << " > "
+                  << EXACT_DIAMETER_LIMIT << ")\n";
+      }
 
     } else {
       std::cerr << "unknown mode: " << mode << "\n";

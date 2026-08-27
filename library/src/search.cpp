@@ -121,8 +121,8 @@ int getExactDiameter(const Graph &g) {
   return maxDistance;
 }
 
-int getApproximateDiameter(const Graph &g) {
-  std::vector<std::vector<int>> components = getComponentsByBreadth(g);
+int getApproximateDiameter(const Graph &g,
+                           const std::vector<std::vector<int>> &components) {
   SearchTree tree = bfs(g, components.front().front());
   int maxLevel = 0;
   int nextTarget = 0;
@@ -139,4 +139,8 @@ int getApproximateDiameter(const Graph &g) {
       maxLevel = tree.level[i];
   }
   return maxLevel;
+}
+
+int getApproximateDiameter(const Graph &g) {
+  return getApproximateDiameter(g, getComponentsByBreadth(g));
 }

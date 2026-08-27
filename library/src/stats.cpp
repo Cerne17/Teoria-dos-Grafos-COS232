@@ -12,7 +12,8 @@ GraphStats computeStats(const Graph &g) {
   int smallestComponentSize = static_cast<int>(components.back().size());
 
   int exactDiameter = getExactDiameter(g);
-  int approximateDiameter = getApproximateDiameter(g);
+  // Reuse the components computed above instead of sweeping the graph again.
+  int approximateDiameter = getApproximateDiameter(g, components);
 
   std::vector<int> degrees;
   degrees.reserve(n);

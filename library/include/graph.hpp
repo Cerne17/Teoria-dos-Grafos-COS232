@@ -91,3 +91,8 @@ int getDistance(const Graph &g, const int u, const int v);
 int getExactDiameter(const Graph &g);
 
 int getApproximateDiameter(const Graph &g);
+
+// Overload for callers that already hold the components, so the BFS sweep that
+// builds them is not repeated.
+int getApproximateDiameter(const Graph &g,
+                           const std::vector<std::vector<int>> &components);

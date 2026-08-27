@@ -2,6 +2,7 @@
 *.o
 app/graphs
 app/graphs_release
+app/benchmark
 
 # macOS debug symbol bundles
 *.dSYM/

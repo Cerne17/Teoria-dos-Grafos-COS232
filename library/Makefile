@@ -5,7 +5,7 @@ RELFLAGS := -std=c++17 -Iinclude -Wall -Wextra -O2
 OBJS := src/graph.o src/io.o src/search.o src/stats.o src/components.o src/distance.o app/main.o
 LIB_SRCS := src/graph.cpp src/io.cpp src/search.cpp src/stats.cpp src/components.cpp src/distance.cpp
 
-.PHONY: all release clean
+.PHONY: all release benchmark clean
 
 all: app/graphs
 
@@ -21,12 +21,13 @@ release: app/graphs_release
 app/graphs_release: app/main.cpp $(LIB_SRCS) include/graph.hpp
 	$(CXX) $(RELFLAGS) app/main.cpp $(LIB_SRCS) -o $@
 
+benchmark: app/benchmark
 
-benchmark: app/benchmark.cpp $(LIB_SRCS)
-	$(CXX) -std=c++17 -Iinclude -O2 $^ -o app/benchmark
+app/benchmark: app/benchmark.cpp $(LIB_SRCS) include/graph.hpp
+	$(CXX) $(RELFLAGS) app/benchmark.cpp $(LIB_SRCS) -o $@
 
 %.o: %.cpp include/graph.hpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) app/graphs app/graphs_release
+	rm -f $(OBJS) app/graphs app/graphs_release app/benchmark

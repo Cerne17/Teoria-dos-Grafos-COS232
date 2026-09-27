@@ -9,6 +9,8 @@ Mouse
     palette (right)       left click: pick a tile; ◀ ▶ buttons or [ ] change page
                           (roads, curb cuts, parks & blocks, buildings, entrances)
     map (left)            left click / drag: paint     right click / drag: erase
+                          Delete / Backspace: erase the tile under the mouse
+                          Eraser button: left click / drag erases until turned off
                           middle click: pick the tile under the cursor
                           buildings (skyscraper, mall...): a click places the whole
                           building, the clicked cell being the picked part; erasing
@@ -60,10 +62,11 @@ from steps import record_steps
 from tiles import EMPTY, TILES
 
 PALETTE_COLS = tiles.ATLAS_COLS
-KEYS = set("rgfxoncusldtpyze[]") | {"escape"}
+KEYS = set("rgfxoncusldtpyze[]") | {"escape", "backspace", "delete"}
 Cell = tuple[int, int]
 Zones = list[list[str | None]]
 MAX_SIZE = 60
+ERASER_OFF, ERASER_ON = "#f2f2f2", "#ffb3b3"
 AREA_COLORS = {"downtown": "#7b61ff", "mixed": "#ff9f1c", "suburb": "#2ecc40"}
 OTHER_COLORS = ["#e84393", "#00b8d4", "#8d6e63", "#607d8b"]
 
@@ -99,6 +102,8 @@ class Builder:
         self.history: list[tuple[list[list[int]], set[Cell], Zones]] = []
         self.flagged: list[tuple[int, int, str]] = []  # sides blamed by a failed fill
         self.show_sockets = False
+        self.eraser = False  # while on, left click / drag erases instead of painting
+        self.hovered: Cell | None = None  # map cell under the mouse, for Delete
         self.painting: int | None = None  # tile being dragged, if any
         self.dijkstra_mode = False
         # Route endpoints: a road vertex or a place (see places.py)
@@ -120,7 +125,7 @@ class Builder:
             layout="constrained",
         )
         axes = self.fig.subplot_mosaic(
-            [["map", "pal"], ["map", "buttons"]], width_ratios=[map_w, 5], height_ratios=[4, 3.1]
+            [["map", "pal"], ["map", "buttons"]], width_ratios=[map_w, 5], height_ratios=[4, 3.4]
         )
         self.map_ax, self.pal_ax = axes["map"], axes["pal"]
         self.buttons = self._make_buttons(axes["buttons"])
@@ -150,23 +155,26 @@ class Builder:
             ("Undo  (u)", self.undo, "#f2f2f2"),
             ("Save  (s)", self.save, "#f2f2f2"),
             ("Export GIF  (e)", self.export_gif, "#e8d8ff"),
+            (self._eraser_label(), self.toggle_eraser, ERASER_OFF),
         ]
         buttons = []
         # Two per row; the size box takes the slot after the last button
         for k, (label, action, color) in enumerate(specs):
             row, col = divmod(k, 2)
-            bax = ax.inset_axes([col * 0.51, 0.89 - row * 0.142, 0.49, 0.11])
+            bax = ax.inset_axes([col * 0.51, 0.9 - row * 0.127, 0.49, 0.1])
             button = Button(bax, label, color=color, hovercolor="white")
             button.label.set_fontsize(9)
             button.on_clicked(lambda _event, action=action: action())
             buttons.append(button)  # keep a reference or the button stops working
             if action == self.next_style:
                 self.style_button = button
+            if action == self.toggle_eraser:
+                self.eraser_button = button
         row = -(-len(specs) // 2)  # the row after the buttons
-        self.name_box = TextBox(ax.inset_axes([0.62, 0.89 - row * 0.142, 0.38, 0.11]), "Name  ",
+        self.name_box = TextBox(ax.inset_axes([0.62, 0.9 - row * 0.127, 0.38, 0.1]), "Name  ",
                                 initial="(click a place in d mode)")  # fmt: skip
         self.name_box.on_submit(self.rename_place)
-        self.size_box = TextBox(ax.inset_axes([0.11, 0.89 - row * 0.142, 0.38, 0.11]),
+        self.size_box = TextBox(ax.inset_axes([0.11, 0.9 - row * 0.127, 0.38, 0.1]),
                                 "Size  ",
                                 initial=f"{self.rows}x{self.cols}")  # fmt: skip
         self.size_box.on_submit(self.resize)
@@ -425,6 +433,29 @@ class Builder:
             grid[r][c] = EMPTY
         self.set_grid(grid, f"cleared {len(self.generated)} generated cells")
 
+    def _eraser_label(self) -> str:
+        return f"Eraser: {'ON — click/drag erases' if self.eraser else 'off'}  (⌫ erases hovered)"
+
+    def toggle_eraser(self) -> None:
+        self.eraser = not self.eraser
+        self.eraser_button.label.set_text(self._eraser_label())
+        color = ERASER_ON if self.eraser else ERASER_OFF
+        self.eraser_button.color = color  # colour while not hovered
+        self.eraser_button.ax.set_facecolor(color)
+        self.message = ("eraser on: left click or drag erases (buildings go whole)"
+                        if self.eraser else "eraser off: left click paints the picked tile")  # fmt: skip
+        self.update_status()
+
+    def erase_at(self, r: int, c: int) -> None:
+        """Deletes the tile at (r, c) — the whole building, if it is part of one."""
+        if self.grid[r][c] == EMPTY:
+            return
+        name = TILES[self.grid[r][c]].base
+        self.snapshot()
+        self.paint(r, c, EMPTY)
+        self.message = f"erased {name} at {r},{c} (u to undo)"
+        self.update_status()
+
     def toggle_sockets(self) -> None:
         self.show_sockets = not self.show_sockets
         self.redraw()
@@ -559,10 +590,11 @@ class Builder:
             self.update_status()
         else:
             self.snapshot()
-            if event.button == 1 and TILES[self.selected].part:
+            erase = event.button == 3 or self.eraser
+            if not erase and TILES[self.selected].part:
                 self.place_building(r, c, self.selected)  # one building per click, no drag
                 return
-            self.painting = self.selected if event.button == 1 else EMPTY
+            self.painting = EMPTY if erase else self.selected
             self.paint(r, c, self.painting)
 
     def on_release(self, event) -> None:
@@ -579,7 +611,8 @@ class Builder:
             self._zone_apply(*(cell or self.zone_drag[:2]))
 
     def on_motion(self, event) -> None:
-        if (cell := self._cell(event, self.map_ax)) is not None:
+        self.hovered = self._cell(event, self.map_ax)
+        if (cell := self.hovered) is not None:
             r, c = cell
             if self.painting is not None:
                 self.paint(r, c, self.painting)
@@ -676,6 +709,12 @@ class Builder:
         if key == "r":
             options = tiles.rotations_of(self.selected)
             self.select(options[(options.index(self.selected) + 1) % len(options)])
+        elif key in ("backspace", "delete"):
+            if self.hovered is None:
+                self.message = "point at a map cell, then press Delete to erase it"
+                self.update_status()
+            else:
+                self.erase_at(*self.hovered)
         elif key in ("[", "]"):
             self.turn_page(-1 if key == "[" else 1)
         elif key == "p":

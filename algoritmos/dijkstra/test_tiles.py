@@ -331,6 +331,20 @@ class TestDriveways(unittest.TestCase):
         self.assertEqual(tiles.without_driveways(road), tile("road_straight_r90"))
         self.assertIn(road, tiles.with_driveways(tile("road_straight_r90")))
 
+    def test_driveways_never_join_two_buildings_or_two_roads(self):
+        self.assertFalse(tiles.fits(tile("park_single_drive_e"), "E", tile("block_single_drive_w")))
+        self.assertFalse(tiles.fits(tile("road_straight_r0_drive_e"), "E", tile("road_straight_r0_drive_w")))
+        for seed in range(6):
+            for fill in (planner.plan(6, 9, planner.Style.load("mixed"), seed),
+                         wfc.generate(6, 9, seed)):  # fmt: skip
+                for r, row in enumerate(fill):
+                    for c, t in enumerate(row):
+                        for side in tiles.SIDES:
+                            if TILES[t].socket(side) == "D":
+                                dr, dc = tiles.DELTA[side]
+                                other = TILES[fill[r + dr][c + dc]]
+                                self.assertNotEqual(TILES[t].is_road, other.is_road)
+
     def test_building_with_an_entrance_is_still_one_building(self):
         grid = tiles.blank(3, 3)
         for x in range(2):

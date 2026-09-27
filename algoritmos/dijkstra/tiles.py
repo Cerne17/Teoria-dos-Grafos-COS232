@@ -7,7 +7,8 @@ Each tile has a socket on every side (N, E, S, W):
     R  two-way road                       B  city block continues
     I  one-way road entering the tile     O  one-way road leaving the tile
     M  inside a multi-cell building (skyscraper, mall...)
-    D  driveway: a building's entrance meeting a road's curb cut (D-D only)
+    D  driveway: a building's entrance meeting a road's curb cut (D-D, and only
+       between a road and a non-road tile: never building to building)
 
 Two neighbours fit when their facing sockets match: R-R, O-I, I-O, P-P, B-B, .-.
 M-M fits only between parts of the same building in their right places, e.g.
@@ -93,6 +94,9 @@ def fits(a: int, side: str, b: int) -> bool:
             return False
         dr, dc = DELTA[side]
         return (tb.part[0], tb.part[1]) == (ta.part[0] + dc, ta.part[1] + dr)
+    if ta.socket(side) == "D":
+        # A driveway links a place to the street: exactly one of the two is a road
+        return tb.socket(OPPOSITE[side]) == "D" and ta.is_road != tb.is_road
     return MATCH[ta.socket(side)] == tb.socket(OPPOSITE[side])
 
 

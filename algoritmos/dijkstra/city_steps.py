@@ -3,6 +3,7 @@
     python city_steps.py                  # from intersection 1, interactive window
     python city_steps.py -s 19 -t 4       # from 19, prints and highlights the route to 4
     python city_steps.py -s 19 -o run.png # every step in one grid image
+    python city_steps.py -s 19 -t 4 --gif run.gif   # animated, with a details panel
 
 Window keys: right/left = next/previous step, up/down = 10 steps, home/end = first/last.
 Colours as in steps.py: orange = picked, green = final, yellow = discovered.
@@ -119,6 +120,8 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--source", type=int, default=1, help="1-indexed start")
     parser.add_argument("-t", "--target", type=int, help="1-indexed destination: prints and highlights its route")
     parser.add_argument("-o", "--output", type=Path, help="save all steps as a grid image")
+    parser.add_argument("--gif", type=Path, help="save the run as an animated GIF")
+    parser.add_argument("--fps", type=float, default=1.0, help="GIF steps per second")
     args = parser.parse_args()
 
     graph = city.load()
@@ -140,7 +143,15 @@ if __name__ == "__main__":
     def draw_panel(i: int, ax: plt.Axes) -> None:
         draw_step(graph, steps, i, ax, target)
 
-    if args.output:
+    if args.gif:
+        import gif
+
+        gif.export(args.gif, len(steps), draw_panel,
+                   lambda i: gif.describe(steps, i, args.source - 1, unit=" m", target=target,
+                                          route=lambda s: route(s, target)),
+                   figsize=(12, 8), fps=args.fps, title=suptitle)  # fmt: skip
+        print(f"saved {args.gif}")
+    elif args.output:
         save_grid(range(len(steps)), draw_panel, suptitle, args.output)
     else:
         browse(len(steps), draw_panel, suptitle)

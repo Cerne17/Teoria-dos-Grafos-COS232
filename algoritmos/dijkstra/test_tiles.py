@@ -219,5 +219,97 @@ class TestAreas(unittest.TestCase):
             path.unlink(missing_ok=True)
 
 
+class TestBuildings(unittest.TestCase):
+    def test_parts_fit_only_in_their_place(self):
+        a, b, c = tile("mall_3x2_0_0"), tile("mall_3x2_1_0"), tile("mall_3x2_2_0")
+        self.assertTrue(tiles.fits(a, "E", b))
+        self.assertFalse(tiles.fits(a, "E", c))  # skipped a part
+        self.assertFalse(tiles.fits(b, "E", a))  # wrong order
+        self.assertFalse(tiles.fits(a, "E", tile("skyscraper_2x2_1_0")))  # other building
+        self.assertTrue(tiles.fits(a, "S", tile("mall_3x2_0_1")))
+        self.assertTrue(tiles.fits(tile("tower"), "E", a))  # outer side: pavement
+
+    def test_second_sample_uses_one_way_tiles_and_buildings_and_fits(self):
+        grid = tiles.load_map(tiles.MAPS / "sample2.txt")
+        self.assertEqual(tiles.from_image(tiles.ASSETS / "sample_city_2.png"), grid)
+        self.assertEqual(tiles.mismatches(grid), [])
+        bases = tiles.count_bases(grid)
+        self.assertIn("mall_2x3", bases)
+        self.assertIn("oneway_straight", bases)
+        roads, largest = wfc.connectivity(grid)
+        self.assertEqual(roads, largest)
+
+    def test_generated_buildings_are_whole(self):
+        style = planner.Style.load("downtown")
+        for seed in range(4):
+            grid = planner.plan(12, 18, style, seed)
+            self.assertEqual(tiles.mismatches(grid), [])  # M sides only fit their own parts
+
+
+class TestPlaces(unittest.TestCase):
+    def setUp(self):
+        import places
+
+        self.places = places
+        self.grid = tiles.load_map(tiles.MAPS / "sample2.txt")
+        self.city = tiles.to_graph(self.grid)
+        self.all = places.find_places(self.grid)
+
+    def test_every_building_is_one_place_and_reaches_a_road(self):
+        cells = [cell for p in self.all for cell in p.cells]
+        self.assertEqual(len(cells), len(set(cells)))  # no cell in two places
+        mall = self.places.find(self.all, "shopping mall")
+        self.assertEqual(len(mall.cells), 6)
+        for p in self.all:
+            self.assertTrue(self.places.driveways(self.city, p), p.name)
+
+    def test_find_by_name_number_and_cell(self):
+        joe = self.places.find(self.all, "joe's house")
+        self.assertEqual(self.places.find(self.all, f"P{joe.id + 1}"), joe)
+        r, c = joe.cells[0]
+        self.assertEqual(self.places.resolve(f"{r},{c}", self.city, self.all), joe)
+        with self.assertRaises(ValueError):
+            self.places.find(self.all, "house")  # ambiguous
+
+    def test_route_between_places_matches_networkx_and_never_crosses_buildings(self):
+        joe = self.places.find(self.all, "Joe's house")
+        mall = self.places.find(self.all, "shopping mall")
+        routed, s, t = self.places.with_places(self.city, joe, mall)
+        self.assertEqual(Dijkstra(routed.graph, s)[t],
+                         nx.dijkstra_path_length(to_networkx(routed.graph), s + 1, t + 1))  # fmt: skip
+        # The start only has arcs out, the destination only arcs in
+        self.assertFalse(any(v == s for _, v, _ in routed.graph.edges()))
+        self.assertEqual(routed.graph.out_degree(t), 0)
+
+    def test_renames(self):
+        joe = self.places.find(self.all, "Joe's house")
+        r, c = joe.cells[0]
+        renamed = self.places.find_places(self.grid, names={f"{r},{c}": "City hall"})
+        self.assertEqual(self.places.find(renamed, "City hall").cells, joe.cells)
+
+
+class TestGif(unittest.TestCase):
+    def test_export_writes_one_frame_per_step(self):
+        from PIL import Image
+
+        import gif
+        from steps import record_steps
+        from tile_city_steps import export_gif
+
+        grid = tiles.load_map(SAMPLE)
+        city = tiles.to_graph(grid)
+        steps = record_steps(city.graph, 0)[:5]
+        path = tiles.MAPS / "_test.gif"
+        try:
+            export_gif(path, grid, city, steps, 0, fps=10)
+            with Image.open(path) as image:
+                self.assertEqual(image.n_frames, 5)
+        finally:
+            path.unlink(missing_ok=True)
+        text = gif.describe(steps, 1, 0)
+        self.assertIn("step 2 / 5", text)
+        self.assertIn("frontier", text)
+
+
 if __name__ == "__main__":
     unittest.main()

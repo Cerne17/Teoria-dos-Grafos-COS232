@@ -38,6 +38,10 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "block_single": 2, "block_cap": 0.6, "block_corner": 0.8, "block_strip": 0.4,
     "block_edge": 0.8, "block_center": 0.8,
     "parking_lot": 0.4, "plaza": 0.3, "tower": 0.3, "empty": 3,
+    "house_pool": 0.4, "house_pair": 0.4, "house_garden": 0.4, "house_row": 0.3,
+    "apartment_a": 0.3, "apartment_b": 0.3, "office_glass": 0.3, "shops": 0.3,
+    # Multi-cell buildings: the weight applies to each part
+    "skyscraper_2x2": 0.15, "slab_2x1": 0.2, "slab_1x2": 0.2, "mall_3x2": 0.1, "mall_2x3": 0.1,
 }  # fmt: skip
 
 

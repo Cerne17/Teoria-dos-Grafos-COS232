@@ -2,6 +2,7 @@
 
     python steps.py graphs/graph_02.txt                  # source 1, opens a window
     python steps.py graphs/graph_03.txt -s 3 -o g03.png  # source 3, saves to file
+    python steps.py graphs/graph_03.txt --gif g03.gif    # animated, with a details panel
 
 Colours: orange = vertex picked this step, green = explored (final),
 yellow = discovered (tentative), blue = unknown. Red arcs = parent tree so far.
@@ -81,11 +82,29 @@ if __name__ == "__main__":
     parser.add_argument("path", type=Path, help="graph file: n, then 'u v w' lines")
     parser.add_argument("-s", "--source", type=int, default=1, help="1-indexed source")
     parser.add_argument("-o", "--output", type=Path, help="save image instead of showing")
+    parser.add_argument("--gif", type=Path, help="save the run as an animated GIF")
+    parser.add_argument("--fps", type=float, default=1.0, help="GIF steps per second")
     args = parser.parse_args()
 
     graph = AdjacencyList.from_file(args.path)
     steps = record_steps(graph, args.source - 1)
     print_steps(steps)
+
+    if args.gif:
+        import gif
+
+        def draw_panel(i: int, ax: plt.Axes) -> None:
+            s = steps[i]
+            viz.draw(graph, title=f"step {i + 1}: pick {s.picked + 1}", source=s.picked,
+                     distances=s.distances, tree_edges=s.tree_edges, explored=s.explored,
+                     frontier=s.frontier, ax=ax)  # fmt: skip
+
+        gif.export(args.gif, len(steps), draw_panel,
+                   lambda i: gif.describe(steps, i, args.source - 1),
+                   figsize=(11, 6.5), fps=args.fps,
+                   title=f"Dijkstra on {args.path.stem} from {args.source}")  # fmt: skip
+        print(f"saved {args.gif}")
+        raise SystemExit
 
     fig = draw_steps(graph, steps)
     fig.suptitle(f"Dijkstra on {args.path.stem} from {args.source}", fontsize=14)

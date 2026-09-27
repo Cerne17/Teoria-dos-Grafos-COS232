@@ -6,8 +6,11 @@ Each tile has a socket on every side (N, E, S, W):
     .  nothing crosses this side          P  park continues
     R  two-way road                       B  city block continues
     I  one-way road entering the tile     O  one-way road leaving the tile
+    M  inside a multi-cell building (skyscraper, mall...)
 
 Two neighbours fit when their facing sockets match: R-R, O-I, I-O, P-P, B-B, .-.
+M-M fits only between parts of the same building in their right places, e.g.
+mall_3x2_1_0 must sit east of mall_3x2_0_0 (parts are named base_x_y).
 
 A tile map is a grid of tile indices. Every road tile is a vertex; an arc goes
 from a road tile to its neighbour when the road may be driven that way, with
@@ -15,7 +18,7 @@ weight TILE_METERS. Vertices are numbered in row-major order.
 """
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 
@@ -37,7 +40,7 @@ MATCH = {"R": "R", "O": "I", "I": "O", "P": "P", "B": "B", ".": "."}
 
 # (base name, sockets N E S W at r0, rotations present in the atlas), in atlas order.
 # rotation k turns the tile 90*k degrees clockwise.
-_BASES: list[tuple[str, str, Sequence[int]]] = [
+_BASES: list[tuple[str, str, Sequence[int | None] | str]] = [
     ("road_straight", "R.R.", (0, 1)),
     ("road_crosswalk", "R.R.", (0, 1)),
     ("road_curve", ".RR.", (0, 1, 2, 3)),
@@ -68,6 +71,20 @@ _BASES: list[tuple[str, str, Sequence[int]]] = [
     ("parking_lot", "....", (0, 1)),
     ("plaza", "....", (None,)),
     ("tower", "....", (None,)),
+    ("house_pool", "....", (None,)),
+    ("house_pair", "....", (None,)),
+    ("house_garden", "....", (None,)),
+    ("house_row", "....", (None,)),
+    ("apartment_a", "....", (None,)),
+    ("apartment_b", "....", (None,)),
+    ("office_glass", "....", (None,)),
+    ("shops", "....", (None,)),
+    # Multi-cell buildings: one tile per part, sockets derived from the size
+    ("skyscraper_2x2", "", "piece"),
+    ("slab_2x1", "", "piece"),
+    ("slab_1x2", "", "piece"),
+    ("mall_3x2", "", "piece"),
+    ("mall_2x3", "", "piece"),
 ]
 
 
@@ -77,6 +94,7 @@ class Tile:
     name: str
     base: str
     sockets: str  # N E S W
+    part: tuple[int, int, int, int] | None = None  # x, y, width, height in a building
 
     def socket(self, side: str) -> str:
         return self.sockets[SIDES.index(side)]
@@ -87,7 +105,8 @@ class Tile:
 
     def describe(self) -> str:
         """Sides in words, e.g. 'N exit, S entrance' (sides with nothing are left out)."""
-        words = {"R": "two-way", "I": "entrance", "O": "exit", "P": "park", "B": "block"}
+        words = {"R": "two-way", "I": "entrance", "O": "exit", "P": "park", "B": "block",
+                 "M": "same building"}  # fmt: skip
         parts = [f"{side} {words[s]}" for side, s in zip(SIDES, self.sockets) if s != "."]
         return ", ".join(parts) or "no connections"
 
@@ -98,9 +117,26 @@ def _rotate(sockets: str, k: int) -> str:
     return sockets[-k:] + sockets[:-k] if k else sockets
 
 
+def _pieces(base: str, first: int) -> list[Tile]:
+    """Parts of a WxH building, row by row: M on sides shared with another part."""
+    w, h = (int(n) for n in base.rsplit("_", 1)[1].split("x"))
+    parts = []
+    for y in range(h):
+        for x in range(w):
+            sockets = "".join(
+                "M" if inside else "."
+                for inside in (y > 0, x < w - 1, y < h - 1, x > 0)  # N E S W
+            )
+            parts.append(Tile(first + len(parts), f"{base}_{x}_{y}", base, sockets, (x, y, w, h)))
+    return parts
+
+
 def _build() -> list[Tile]:
     tiles = []
     for base, sockets, rotations in _BASES:
+        if rotations == "piece":
+            tiles.extend(_pieces(base, len(tiles)))
+            continue
         for k in rotations:
             name = base if k is None else f"{base}_r{90 * k}"
             tiles.append(Tile(len(tiles), name, base, _rotate(sockets, k or 0)))
@@ -116,11 +152,20 @@ BY_NAME = {t.name: t for t in TILES}
 
 def fits(a: int, side: str, b: int) -> bool:
     """Can tile b sit on the given side of tile a?"""
-    return MATCH[TILES[a].socket(side)] == TILES[b].socket(OPPOSITE[side])
+    ta, tb = TILES[a], TILES[b]
+    if ta.socket(side) == "M" or tb.socket(OPPOSITE[side]) == "M":
+        # Both parts of the same building, b exactly one step from a
+        if not (ta.part and tb.part and ta.base == tb.base):
+            return False
+        dr, dc = DELTA[side]
+        return (tb.part[0], tb.part[1]) == (ta.part[0] + dc, ta.part[1] + dr)
+    return MATCH[ta.socket(side)] == tb.socket(OPPOSITE[side])
 
 
 def rotations_of(index: int) -> list[int]:
     """All tiles sharing index's base, in atlas order (r0, r90, ...)."""
+    if TILES[index].part:
+        return [index]  # building parts don't rotate
     base = TILES[index].base
     return [t.index for t in TILES if t.base == base]
 
@@ -219,9 +264,13 @@ def mismatches(grid: Sequence[Sequence[int]]) -> list[tuple[int, int, str]]:
 class CityGraph:
     graph: AdjacencyList
     cells: list[tuple[int, int]]  # vertex -> (row, col)
-    vertex_at: dict[tuple[int, int], int]  # (row, col) -> vertex
+    vertex_at: dict[tuple[int, int], int]  # (row, col) -> road vertex
+    names: dict[int, str] = field(default_factory=dict)  # place vertices (see places.py)
+    walkable: set[tuple[int, int]] = field(default_factory=set)  # non-road cells
 
     def label(self, v: int) -> str:
+        if v in self.names:
+            return self.names[v]
         r, c = self.cells[v]
         return f"{v + 1} (row {r}, col {c})"
 
@@ -246,7 +295,29 @@ def to_graph(grid: Sequence[Sequence[int]]) -> CityGraph:
             u = vertex_at.get((r + dr, c + dc))
             if u is not None and fits(grid[r][c], side, grid[r + dr][c + dc]):
                 graph.add_edge(v, u, TILE_METERS)
-    return CityGraph(graph, cells, vertex_at)
+    walkable = {(r, c) for r, row in enumerate(grid) for c, t in enumerate(row)
+                if not TILES[t].is_road}  # fmt: skip
+    return CityGraph(graph, cells, vertex_at, walkable=walkable)
+
+
+def building_cells(grid: Sequence[Sequence[int]], r: int, c: int) -> list[tuple[int, int, int]]:
+    """(row, col, tile) of every part of the building whose part sits at (r, c).
+
+    Parts that are missing or out of place are left out.
+    """
+    t = TILES[grid[r][c]]
+    if not t.part:
+        return [(r, c, grid[r][c])]
+    x, y, w, h = t.part
+    top, left = r - y, c - x
+    cells = []
+    for py in range(h):
+        for px in range(w):
+            rr, cc = top + py, left + px
+            index = BY_NAME[f"{t.base}_{px}_{py}"].index
+            if 0 <= rr < len(grid) and 0 <= cc < len(grid[0]) and grid[rr][cc] == index:
+                cells.append((rr, cc, index))
+    return cells
 
 
 def blank(rows: int, cols: int) -> list[list[int]]:

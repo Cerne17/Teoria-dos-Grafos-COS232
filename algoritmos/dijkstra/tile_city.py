@@ -1,13 +1,16 @@
 """Draws a tile city (see tiles.py) and shortest paths on it.
 
-Every road tile is a vertex. Pick vertices by number (as shown with --labels)
-or by cell as row,col (0-indexed, row 0 at the top).
+Every road tile is a vertex. Routes go between places (houses, malls, parks...,
+see places.py) or road tiles. An endpoint is a place name ("Joe's house"), a
+place number (P12), a cell as row,col (0-indexed, row 0 at the top: a road
+tile or any cell of a place) or a road vertex number (see --labels).
 
-    python tile_city.py                          # city/maps/sample.txt
-    python tile_city.py city/maps/sample.txt --labels
-    python tile_city.py -s 0,5 -t 9,13           # route between two cells
-    python tile_city.py -s 0,5                   # routes to every road tile
-    python tile_city.py -s 0,5 -t 9,13 -o r.png  # save instead of showing
+    python tile_city.py city/maps/sample2.txt --places        # list and number places
+    python tile_city.py city/maps/sample2.txt -s "Joe's house" -t "shopping mall"
+    python tile_city.py -s 0,5 -t 9,13           # between two road cells
+    python tile_city.py -s P3                    # routes from a place to everywhere
+    python tile_city.py --labels                 # road vertex numbers
+    python tile_city.py -s P3 -t P9 -o r.png     # save instead of showing
 """
 
 import argparse
@@ -15,11 +18,13 @@ from collections.abc import Collection, Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch
+from matplotlib.patches import FancyArrowPatch, Rectangle
 
+import places as places_mod
 import tiles
 import viz
 from city import COLORS, shortest_path, shortest_paths
+from places import Place
 from tiles import CityGraph
 
 DEFAULT_MAP = tiles.MAPS / "sample.txt"
@@ -101,6 +106,8 @@ def draw(
     path: Sequence[int] = (),
     labels: bool = False,
     bad_sides: Sequence[tuple[int, int, str]] = (),
+    places: Sequence[Place] = (),
+    place_numbers: Sequence[Place] = (),
     ax: plt.Axes | None = None,
 ) -> plt.Axes:
     """Draws the tiles, then the Dijkstra state on top (vertices 0-indexed).
@@ -153,6 +160,20 @@ def draw(
         x, y = c + 0.5 + dc * 0.45, r + 0.5 + dr * 0.45
         ax.plot(x, y, marker="X", color="red", markersize=9, markeredgecolor="white", zorder=7)
 
+    for p in places:  # outlined, with their name
+        for r, c in p.cells:
+            ax.add_patch(Rectangle((c + 0.04, r + 0.04), 0.92, 0.92, fill=False,
+                                   edgecolor=COLORS["path"], linewidth=2.5, zorder=4))  # fmt: skip
+        r, c = p.center
+        ax.text(c + 0.5, r + 0.02, p.name, ha="center", va="bottom", fontsize=8,
+                fontweight="bold", color="white", zorder=9,
+                bbox={"boxstyle": "round,pad=0.2", "fc": COLORS["path"], "ec": "none"})  # fmt: skip
+    for p in place_numbers:  # P-numbers, as in --places
+        r, c = p.center
+        ax.text(c + 0.5, r + 0.5, f"P{p.id + 1}", ha="center", va="center", fontsize=6,
+                zorder=8, bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none",
+                                "alpha": 0.85})  # fmt: skip
+
     ax.set_xlim(0, cols)
     ax.set_ylim(rows, 0)
     ax.set_aspect("equal")
@@ -163,10 +184,15 @@ def draw(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0],
+        epilog=__doc__.split("\n", 2)[2],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("map", nargs="?", type=Path, default=DEFAULT_MAP, help="tile map file")
-    parser.add_argument("-s", "--source", help="start: vertex number or row,col")
-    parser.add_argument("-t", "--target", help="destination: vertex number or row,col (needs -s)")
+    parser.add_argument("-s", "--source", help="start: place name, P-number, row,col or vertex")
+    parser.add_argument("-t", "--target", help="destination, same forms as -s (needs -s)")
+    parser.add_argument("--places", action="store_true", help="list places and number them on the map")
     parser.add_argument("--labels", action="store_true", help="write vertex numbers on road tiles")
     parser.add_argument("-o", "--output", type=Path, help="save image instead of showing")
     args = parser.parse_args()
@@ -175,31 +201,40 @@ if __name__ == "__main__":
 
     grid = tiles.load_map(args.map)
     city = tiles.to_graph(grid)
+    all_places = places_mod.load_for(args.map, grid)
     if bad := tiles.mismatches(grid):
         print(f"warning: {len(bad)} sides don't fit their neighbour (marked with X)")
+    if args.places:
+        print(places_mod.listing(all_places))
 
-    kwargs = {"city": city, "labels": args.labels, "bad_sides": bad}
-    if args.source is not None:
+    kwargs = {"labels": args.labels, "bad_sides": bad,
+              "place_numbers": all_places if args.places else ()}  # fmt: skip
+    if args.source is None:
+        kwargs["city"] = city
+    else:
         try:
-            source = parse_vertex(args.source, city)
-            target = None if args.target is None else parse_vertex(args.target, city)
+            src = places_mod.resolve(args.source, city, all_places)
+            dst = None if args.target is None else places_mod.resolve(args.target, city, all_places)
         except ValueError as e:
             parser.error(str(e))
-        distances, parent = shortest_paths(city.graph, source)
+        routed, source, target = places_mod.with_places(city, src, dst)
+        kwargs["city"] = routed
+        kwargs["places"] = [p for p in (src, dst) if isinstance(p, Place)]
+        distances, parent = shortest_paths(routed.graph, source)
         kwargs |= {"source": source, "distances": distances}
         if target is None:
-            kwargs["title"] = f"Shortest paths from {city.label(source)}"
+            kwargs["title"] = f"Shortest paths from {routed.label(source)}"
             kwargs["tree_edges"] = [(p, v) for v, p in enumerate(parent) if p is not None]
         else:
-            dist, path = shortest_path(city.graph, source, target)
+            dist, path = shortest_path(routed.graph, source, target)
             if path:
-                kwargs["title"] = f"{city.label(source)} → {city.label(target)}: {dist:g} m"
+                kwargs["title"] = f"{routed.label(source)} → {routed.label(target)}: {dist:g} m"
                 kwargs["path"] = path
                 # Mark only the route's tiles, so the map stays readable
                 on_path = set(path)
                 kwargs["distances"] = [d if v in on_path else float("inf") for v, d in enumerate(distances)]
             else:
-                kwargs["title"] = f"{city.label(target)} is unreachable from {city.label(source)}"
+                kwargs["title"] = f"{routed.label(target)} is unreachable from {routed.label(source)}"
             print(kwargs["title"])
 
     ax = draw(grid, **kwargs)

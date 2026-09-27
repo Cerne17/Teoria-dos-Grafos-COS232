@@ -9,6 +9,9 @@ Mouse
     palette (right)       left click: pick a tile
     map (left)            left click / drag: paint     right click / drag: erase
                           middle click: pick the tile under the cursor
+                          buildings (skyscraper, mall...): a click places the whole
+                          building, the clicked cell being the picked part; erasing
+                          any part erases the whole building
 Buttons / keys
     p    Plan city: planned streets + scenery in the current style (realistic)
     y    next style (city/styles/*.json: tune a city by editing these)
@@ -22,8 +25,12 @@ Buttons / keys
     r    rotate the picked tile             n    new random city
     c    clear the map                      u    undo
     s    save                               l    reload from file
-    d    Dijkstra: click a start, then a destination (d again or esc to leave)
+    d    Dijkstra: click a start, then a destination (d again or esc to leave).
+         Click a building/park for a place (routes go place to place, e.g. from
+         Joe's house to the mall) or a road tile. The Name box renames the last
+         place clicked (saved in <map>.places.json).
     t    step through Dijkstra from the chosen start (new window)
+    e    export the Dijkstra run as an animated GIF (<map>_dijkstra.gif)
 
 Road sides (palette, and map with o): blue dot = two-way, green triangle
 pointing in = entrance, red triangle pointing out = exit.
@@ -40,6 +47,7 @@ from matplotlib.colors import to_rgba
 from matplotlib.patches import Patch, Rectangle
 from matplotlib.widgets import Button, TextBox
 
+import places as places_mod
 import planner
 import tile_city
 import tile_city_steps
@@ -51,7 +59,7 @@ from steps import record_steps
 from tiles import EMPTY, TILES
 
 PALETTE_COLS = tiles.ATLAS_COLS
-KEYS = set("rgfxoncusldtpyz") | {"escape"}
+KEYS = set("rgfxoncusldtpyze") | {"escape"}
 Cell = tuple[int, int]
 Zones = list[list[str | None]]
 MAX_SIZE = 60
@@ -92,8 +100,11 @@ class Builder:
         self.show_sockets = False
         self.painting: int | None = None  # tile being dragged, if any
         self.dijkstra_mode = False
-        self.source: int | None = None
-        self.target: int | None = None
+        # Route endpoints: a road vertex or a place (see places.py)
+        self.source: int | places_mod.Place | None = None
+        self.target: int | places_mod.Place | None = None
+        self.place_names = places_mod.load_names(path)  # "row,col" -> custom name
+        self.last_place: places_mod.Place | None = None
         self.message = "pick a tile on the right, paint on the left"
         self.rng = random.Random()
         self.step_windows: list[plt.Figure] = []  # keep open viewers alive
@@ -111,7 +122,7 @@ class Builder:
             layout="constrained",
         )
         axes = self.fig.subplot_mosaic(
-            [["map", "pal"], ["map", "buttons"]], width_ratios=[map_w, 5], height_ratios=[4, 2.2]
+            [["map", "pal"], ["map", "buttons"]], width_ratios=[map_w, 5], height_ratios=[4, 2.7]
         )
         self.map_ax, self.pal_ax = axes["map"], axes["pal"]
         self.buttons = self._make_buttons(axes["buttons"])
@@ -138,18 +149,22 @@ class Builder:
             ("Areas  (z)", self.toggle_zones, "#ffe3b3"),
             ("Undo  (u)", self.undo, "#f2f2f2"),
             ("Save  (s)", self.save, "#f2f2f2"),
+            ("Export GIF  (e)", self.export_gif, "#e8d8ff"),
         ]
         buttons = []
         # Two per row; the size box takes the slot after the last button
         for k, (label, action, color) in enumerate(specs):
             row, col = divmod(k, 2)
-            bax = ax.inset_axes([col * 0.51, 0.82 - row * 0.2, 0.49, 0.16])
+            bax = ax.inset_axes([col * 0.51, 0.86 - row * 0.166, 0.49, 0.13])
             button = Button(bax, label, color=color, hovercolor="white")
             button.label.set_fontsize(9)
             button.on_clicked(lambda _event, action=action: action())
             buttons.append(button)  # keep a reference or the button stops working
-        row, col = divmod(len(specs), 2)
-        self.size_box = TextBox(ax.inset_axes([col * 0.51 + 0.11, 0.82 - row * 0.2, 0.38, 0.16]),
+        row = -(-len(specs) // 2)  # the row after the buttons
+        self.name_box = TextBox(ax.inset_axes([0.62, 0.86 - row * 0.166, 0.38, 0.13]), "Name  ",
+                                initial="(click a place in d mode)")  # fmt: skip
+        self.name_box.on_submit(self.rename_place)
+        self.size_box = TextBox(ax.inset_axes([0.11, 0.86 - row * 0.166, 0.38, 0.13]),
                                 "Size  ",
                                 initial=f"{self.rows}x{self.cols}")  # fmt: skip
         self.size_box.on_submit(self.resize)
@@ -179,29 +194,41 @@ class Builder:
         ax.set_title(f"picked {t.index}: {t.name}\n{t.describe()}", fontsize=9)
         tile_city.socket_legend(ax, loc="upper center", bbox_to_anchor=(0.5, 0.0))
 
+    def places(self) -> list[places_mod.Place]:
+        return places_mod.find_places(self.grid, self.zones, self.place_names)
+
+    def routed(self):
+        """(graph with the chosen place endpoints, source vertex, target vertex, places)."""
+        city = tiles.to_graph(self.grid)
+        routed, source, target = places_mod.with_places(city, self.source, self.target)
+        endpoints = [p for p in (self.source, self.target) if isinstance(p, places_mod.Place)]
+        return routed, source, target, endpoints
+
     def redraw(self) -> None:
         self.map_ax.clear()
         city = tiles.to_graph(self.grid)
         kwargs: dict = {"city": city, "bad_sides": tiles.mismatches(self.grid) + self.flagged}
         title = f"{self.path.name} — {self.rows}x{self.cols}"
         if self.dijkstra_mode and self.source is not None:
-            distances, parent = shortest_paths(city.graph, self.source)
-            kwargs |= {"source": self.source, "distances": distances}
-            if self.target is None:
+            city, source, target, endpoints = self.routed()
+            distances, parent = shortest_paths(city.graph, source)
+            kwargs |= {"city": city, "source": source, "distances": distances,
+                       "places": endpoints}  # fmt: skip
+            if target is None:
                 kwargs["tree_edges"] = [(p, v) for v, p in enumerate(parent) if p is not None]
-                title = f"shortest paths from {city.label(self.source)} — click a destination"
+                title = f"shortest paths from {city.label(source)} — click a destination"
             else:
-                dist, path = shortest_path(city.graph, self.source, self.target)
+                dist, path = shortest_path(city.graph, source, target)
                 if path:
                     on_path = set(path)
                     kwargs["path"] = path
                     kwargs["distances"] = [d if v in on_path else float("inf")
                                            for v, d in enumerate(distances)]  # fmt: skip
-                    title = f"{city.label(self.source)} → {city.label(self.target)}: {dist:g} m"
+                    title = f"{city.label(source)} → {city.label(target)}: {dist:g} m"
                 else:
-                    title = f"{city.label(self.target)} is unreachable from {city.label(self.source)}"
+                    title = f"{city.label(target)} is unreachable from {city.label(source)}"
         elif self.dijkstra_mode:
-            title = "Dijkstra mode — click a start road tile"
+            title = "Dijkstra mode — click a start: a building, park or road tile"
         tile_city.draw(self.grid, title=title, ax=self.map_ax, **kwargs)
         if self.show_sockets:
             tile_city.draw_sockets(self.map_ax, self.grid)
@@ -257,7 +284,36 @@ class Builder:
         self.message = message
         self.redraw()
 
+    def place_building(self, r: int, c: int, part: int) -> None:
+        """Places every part of part's building so that part lands on (r, c)."""
+        t = TILES[part]
+        x, y, w, h = t.part
+        top, left = r - y, c - x
+        if top < 0 or left < 0 or top + h > self.rows or left + w > self.cols:
+            self.message = f"{t.base} ({w}x{h}) doesn't fit there"
+            self.update_status()
+            return
+        for py in range(h):
+            for px in range(w):
+                cell = (top + py, left + px)
+                # Replacing part of another building removes that building
+                if TILES[self.grid[cell[0]][cell[1]]].part:
+                    self._erase_building(*cell)
+                self.grid[cell[0]][cell[1]] = tiles.BY_NAME[f"{t.base}_{px}_{py}"].index
+                self.generated.discard(cell)
+        self.flagged = []
+        self.source = self.target = None
+        self.message = f"placed {t.base}"
+        self.redraw()
+
+    def _erase_building(self, r: int, c: int) -> None:
+        for rr, cc, _ in tiles.building_cells(self.grid, r, c):
+            self.grid[rr][cc] = EMPTY
+            self.generated.discard((rr, cc))
+
     def paint(self, r: int, c: int, tile: int) -> None:
+        if TILES[self.grid[r][c]].part and self.grid[r][c] != tile:
+            self._erase_building(r, c)  # never leave half a building behind
         # Painting a generated cell makes it yours: re-fills won't touch it
         self.generated.discard((r, c))
         if self.grid[r][c] != tile or self.flagged:
@@ -371,6 +427,9 @@ class Builder:
     def save(self) -> None:
         tiles.save_map(self.grid, self.path)
         saved = str(self.path)
+        if self.place_names:
+            places_mod.save_names(self.place_names, self.path)
+            saved += f", {self.path.with_suffix('.places.json').name}"
         if any(z for row in self.zones for z in row):
             planner.save_zones(self.zones, self.zones_path())
             saved += f" and {self.zones_path().name}"
@@ -480,6 +539,9 @@ class Builder:
             self.update_status()
         else:
             self.snapshot()
+            if event.button == 1 and TILES[self.selected].part:
+                self.place_building(r, c, self.selected)  # one building per click, no drag
+                return
             self.painting = self.selected if event.button == 1 else EMPTY
             self.paint(r, c, self.painting)
 
@@ -515,38 +577,77 @@ class Builder:
                 self.update_status(f"tile {t.index} {t.name} — {t.describe()}")
 
     def pick_endpoint(self, r: int, c: int) -> None:
-        city = tiles.to_graph(self.grid)
-        v = city.vertex_at.get((r, c))
-        if v is None:
-            self.message = "not a road tile"
-        elif self.source is None or self.target is not None:
-            self.source, self.target = v, None
-            self.message = "start set — click a destination, or t to step through"
-        else:
-            self.target = v
-            self.message = "click another tile to start over, t to step through"
-        self.redraw()
-
-    def open_steps(self) -> None:
-        if self.source is None:
-            self.message = "press d and click a start road tile first"
+        try:
+            endpoint = places_mod.resolve(f"{r},{c}", tiles.to_graph(self.grid), self.places())
+        except ValueError:
+            self.message = "empty pavement: click a building, park or road tile"
             self.update_status()
             return
+        if isinstance(endpoint, places_mod.Place):
+            self.last_place = endpoint
+            self.name_box.set_val(endpoint.name)
+        if self.source is None or self.target is not None:
+            self.source, self.target = endpoint, None
+            self.message = "start set — click a destination; t steps through, e exports a GIF"
+        else:
+            self.target = endpoint
+            self.message = "click another tile to start over; t steps through, e exports a GIF"
+        self.redraw()
+
+    def rename_place(self, name: str) -> None:
+        name = name.strip()
+        if self.last_place is None or not name or name == self.last_place.name:
+            return
+        r, c = self.last_place.cells[0]
+        self.place_names[f"{r},{c}"] = name
+        self.message = f"renamed to {name!r} (saved with s)"
+        # Endpoints are Place objects: refresh them so the new name shows
+        for attr in ("source", "target"):
+            p = getattr(self, attr)
+            if isinstance(p, places_mod.Place) and p.cells == self.last_place.cells:
+                setattr(self, attr, next(q for q in self.places() if q.cells == p.cells))
+        self.last_place = next(q for q in self.places() if q.cells == self.last_place.cells)
+        self.redraw()
+
+    def _run(self):
+        """Dijkstra from the chosen start: (grid, graph, steps, target, places) or None."""
+        if self.source is None:
+            self.message = "press d and click a start (a place or road tile) first"
+            self.update_status()
+            return None
         grid = [row[:] for row in self.grid]
-        city = tiles.to_graph(grid)
-        steps = record_steps(city.graph, self.source)
-        target = self.target
+        city, source, target, endpoints = self.routed()
+        return grid, city, record_steps(city.graph, source), source, target, endpoints
+
+    def open_steps(self) -> None:
+        if (run := self._run()) is None:
+            return
+        grid, city, steps, source, target, endpoints = run
 
         def draw_panel(i: int, ax: plt.Axes) -> None:
-            tile_city_steps.draw_step(grid, city, steps, i, ax, target)
+            tile_city_steps.draw_step(grid, city, steps, i, ax, target, endpoints)
 
-        fig = browse(len(steps), draw_panel, f"Dijkstra from {city.label(self.source)}",
+        fig = browse(len(steps), draw_panel, f"Dijkstra from {city.label(source)}",
                      figsize=(12, 12 * self.rows / self.cols + 0.8), block=False)  # fmt: skip
         self.step_windows.append(fig)
 
+    def export_gif(self) -> None:
+        if (run := self._run()) is None:
+            return
+        grid, city, steps, source, target, endpoints = run
+        out = self.path.with_name(f"{self.path.stem}_dijkstra.gif")
+        self.message = f"exporting {len(steps)} frames..."
+        self.update_status()
+        self.fig.canvas.flush_events()
+        tile_city_steps.export_gif(out, grid, city, steps, source, target,
+                                   title=f"Dijkstra on {self.path.stem} from {city.label(source)}",
+                                   places=endpoints)  # fmt: skip
+        self.message = f"saved {out}"
+        self.update_status()
+
     def on_key(self, event) -> None:
-        if self.size_box.capturekeystrokes:
-            return  # typing in the size box, not a shortcut
+        if self.size_box.capturekeystrokes or self.name_box.capturekeystrokes:
+            return  # typing in a text box, not a shortcut
         key = event.key
         if key == "r":
             options = tiles.rotations_of(self.selected)
@@ -592,6 +693,8 @@ class Builder:
             self.redraw()
         elif key == "t":
             self.open_steps()
+        elif key == "e":
+            self.export_gif()
 
 
 def _resized(grid: list[list], rows: int, cols: int, fill) -> list[list]:

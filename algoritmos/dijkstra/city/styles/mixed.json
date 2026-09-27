@@ -1,0 +1,18 @@
+{
+  "_about": "Default: medium blocks, some one-way streets and roundabouts, buildings with parks. Knobs are explained in planner.py (class Style).",
+  "ring": true,
+  "min_block": 2,
+  "max_block": 4,
+  "oneway": 0.25,
+  "roundabout": 0.15,
+  "crosswalk": 0.3,
+  "culdesac": 0.15,
+  "scenery": {
+    "empty": 0.4,
+    "block_single": 2.0, "block_cap": 0.6, "block_corner": 1.5, "block_strip": 0.6,
+    "block_edge": 2.0, "block_center": 2.0,
+    "park_single": 0.6, "park_cap": 0.3, "park_corner": 0.6, "park_strip": 0.2,
+    "park_edge": 0.5, "park_center": 0.5,
+    "parking_lot": 0.4, "plaza": 0.3, "tower": 0.2
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "_about": "Suburb: big blocks with cul-de-sacs, roundabouts, houses (block_single) and parks, few one-way streets.",
+  "ring": true,
+  "min_block": 3,
+  "max_block": 6,
+  "oneway": 0.05,
+  "roundabout": 0.35,
+  "crosswalk": 0.1,
+  "culdesac": 0.7,
+  "scenery": {
+    "empty": 1.0,
+    "block_single": 4.0, "block_cap": 0.1, "block_corner": 0.1, "block_strip": 0.05,
+    "block_edge": 0.05, "block_center": 0.05,
+    "park_single": 1.0, "park_cap": 0.6, "park_corner": 1.2, "park_strip": 0.4,
+    "park_edge": 1.2, "park_center": 1.2,
+    "parking_lot": 0.2, "plaza": 0.4, "tower": 0.05
+  }
+}

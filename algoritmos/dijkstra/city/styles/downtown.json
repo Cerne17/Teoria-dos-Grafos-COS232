@@ -1,0 +1,18 @@
+{
+  "_about": "Dense centre: small blocks, many one-way streets, big buildings, few parks.",
+  "ring": true,
+  "min_block": 2,
+  "max_block": 3,
+  "oneway": 0.5,
+  "roundabout": 0.05,
+  "crosswalk": 0.5,
+  "culdesac": 0.0,
+  "scenery": {
+    "empty": 0.2,
+    "block_single": 0.8, "block_cap": 0.8, "block_corner": 2.5, "block_strip": 1.0,
+    "block_edge": 3.0, "block_center": 3.0,
+    "park_single": 0.3, "park_cap": 0.05, "park_corner": 0.1, "park_strip": 0.05,
+    "park_edge": 0.05, "park_center": 0.05,
+    "parking_lot": 0.8, "plaza": 0.4, "tower": 0.5
+  }
+}

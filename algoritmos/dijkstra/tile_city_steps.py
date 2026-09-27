@@ -32,8 +32,10 @@ def draw_step(
     ax: plt.Axes,
     target: int | None = None,
     places: list | None = None,
+    disabled: list | None = None,
 ) -> None:
-    """places: start/destination places to outline and name (see places.py)."""
+    """places: start/destination places to outline and name; disabled: places
+    no driveway reaches, greyed out (see places.py)."""
     s = steps[i]
     path = route(s, target) if target is not None and target in s.explored else []
     tile_city.draw(
@@ -48,6 +50,7 @@ def draw_step(
         frontier=s.frontier,
         path=path,
         places=places or (),
+        disabled=disabled or (),
         ax=ax,
     )
 
@@ -69,6 +72,7 @@ def export_gif(
     fps: float = 4.0,
     title: str = "",
     places: list | None = None,
+    disabled: list | None = None,
 ) -> Path:
     """The run as an animated GIF, one frame per step (see gif.py)."""
     import gif
@@ -77,7 +81,7 @@ def export_gif(
     return gif.export(
         path,
         len(steps),
-        lambda i, ax: draw_step(grid, city, steps, i, ax, target, places),
+        lambda i, ax: draw_step(grid, city, steps, i, ax, target, places, disabled),
         lambda i: gif.describe(steps, i, source, lambda v: short_label(city, v), " m",
                                target, lambda s: route(s, target)),  # fmt: skip
         figsize=(14, max(6.5, 10 * rows / cols + 1)),
@@ -115,6 +119,7 @@ if __name__ == "__main__":
     # Adds vertices for start/destination places (driveways only out / only in)
     city, source, target = places_mod.with_places(roads, src, dst, grid)
     endpoints = [p for p in (src, dst) if isinstance(p, places_mod.Place)]
+    disabled = [p for p in all_places if not p.accessible]
 
     steps = record_steps(city.graph, source)
     for i, s in enumerate(steps, 1):
@@ -132,13 +137,14 @@ if __name__ == "__main__":
             print(f"{city.label(target)} is unreachable")
 
     def draw_panel(i: int, ax: plt.Axes) -> None:
-        draw_step(grid, city, steps, i, ax, target, endpoints)
+        draw_step(grid, city, steps, i, ax, target, endpoints, disabled)
 
     suptitle = f"Dijkstra on {args.map.stem} from {city.label(source)}"
     rows, cols = len(grid), len(grid[0])
     panel = (8, 8 * rows / cols + 0.5)
     if args.gif:
-        export_gif(args.gif, grid, city, steps, source, target, args.fps, suptitle, endpoints)
+        export_gif(args.gif, grid, city, steps, source, target, args.fps, suptitle, endpoints,
+                   disabled)  # fmt: skip
         print(f"saved {args.gif}")
     elif args.output:
         indices = evenly_spaced(len(steps), args.panels)

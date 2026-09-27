@@ -113,6 +113,7 @@ def draw(
     bad_sides: Sequence[tuple[int, int, str]] = (),
     places: Sequence[Place] = (),
     place_numbers: Sequence[Place] = (),
+    disabled: Sequence[Place] = (),
     ax: plt.Axes | None = None,
 ) -> plt.Axes:
     """Draws the tiles, then the Dijkstra state on top (vertices 0-indexed).
@@ -165,6 +166,11 @@ def draw(
         x, y = c + 0.5 + dc * 0.45, r + 0.5 + dr * 0.45
         ax.plot(x, y, marker="X", color="red", markersize=9, markeredgecolor="white", zorder=7)
 
+    for p in disabled:  # no driveway reaches them: greyed out, can't be picked
+        for r, c in p.cells:
+            ax.add_patch(Rectangle((c, r), 1, 1, facecolor=(0.25, 0.25, 0.25, 0.6),
+                                   edgecolor=(1, 1, 1, 0.5), hatch="///", linewidth=0,
+                                   zorder=4))  # fmt: skip
     for p in places:  # outlined, with their name
         for r, c in p.cells:
             ax.add_patch(Rectangle((c + 0.04, r + 0.04), 0.92, 0.92, fill=False,
@@ -214,6 +220,8 @@ if __name__ == "__main__":
 
     kwargs = {"labels": args.labels, "bad_sides": bad,
               "place_numbers": all_places if args.places else ()}  # fmt: skip
+    if args.places or args.source is not None:
+        kwargs["disabled"] = [p for p in all_places if not p.accessible]
     if args.source is None:
         kwargs["city"] = city
     else:

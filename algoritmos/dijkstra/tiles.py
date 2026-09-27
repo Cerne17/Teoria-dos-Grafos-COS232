@@ -206,7 +206,6 @@ class CityGraph:
     cells: list[tuple[int, int]]  # vertex -> (row, col)
     vertex_at: dict[tuple[int, int], int]  # (row, col) -> road vertex
     names: dict[int, str] = field(default_factory=dict)  # place vertices (see places.py)
-    walkable: set[tuple[int, int]] = field(default_factory=set)  # non-road cells
 
     def label(self, v: int) -> str:
         if v in self.names:
@@ -235,9 +234,7 @@ def to_graph(grid: Sequence[Sequence[int]]) -> CityGraph:
             u = vertex_at.get((r + dr, c + dc))
             if u is not None and fits(grid[r][c], side, grid[r + dr][c + dc]):
                 graph.add_edge(v, u, TILE_METERS)
-    walkable = {(r, c) for r, row in enumerate(grid) for c, t in enumerate(row)
-                if not TILES[t].is_road}  # fmt: skip
-    return CityGraph(graph, cells, vertex_at, walkable=walkable)
+    return CityGraph(graph, cells, vertex_at)
 
 
 def building_cells(grid: Sequence[Sequence[int]], r: int, c: int) -> list[tuple[int, int, int]]:

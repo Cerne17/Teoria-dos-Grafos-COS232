@@ -255,16 +255,21 @@ class TestPlaces(unittest.TestCase):
         self.city = tiles.to_graph(self.grid)
         self.all = places.find_places(self.grid)
 
-    def test_every_building_is_one_place_and_reaches_a_road(self):
+    def test_every_building_is_one_place(self):
         cells = [cell for p in self.all for cell in p.cells]
         self.assertEqual(len(cells), len(set(cells)))  # no cell in two places
         mall = self.places.find(self.all, "shopping mall")
         self.assertEqual(len(mall.cells), 6)
+
+    def test_old_maps_without_driveways_use_touching_roads(self):
+        # sample2 predates driveway tiles: a place is accessible iff it touches a road
         for p in self.all:
-            self.assertTrue(self.places.driveways(self.city, p), p.name)
+            touches = any((r + dr, c + dc) in self.city.vertex_at
+                          for r, c in p.cells for dr, dc in tiles.DELTA.values())  # fmt: skip
+            self.assertEqual(p.accessible, touches, p.name)
 
     def test_find_by_name_number_and_cell(self):
-        joe = self.places.find(self.all, "joe's house")
+        joe = self.places.find(self.all, "leo's house")  # touches a road: accessible
         self.assertEqual(self.places.find(self.all, f"P{joe.id + 1}"), joe)
         r, c = joe.cells[0]
         self.assertEqual(self.places.resolve(f"{r},{c}", self.city, self.all), joe)
@@ -272,7 +277,7 @@ class TestPlaces(unittest.TestCase):
             self.places.find(self.all, "house")  # ambiguous
 
     def test_route_between_places_matches_networkx_and_never_crosses_buildings(self):
-        joe = self.places.find(self.all, "Joe's house")
+        joe = self.places.find(self.all, "Leo's house")
         mall = self.places.find(self.all, "shopping mall")
         routed, s, t = self.places.with_places(self.city, joe, mall)
         self.assertEqual(Dijkstra(routed.graph, s)[t],
@@ -361,11 +366,35 @@ class TestDriveways(unittest.TestCase):
         self.assertEqual(tiles.mismatches(grid), [])
         city = tiles.to_graph(grid)
         joe = places.find(places.find_places(grid), "Joe's house")
+        self.assertTrue(joe.accessible)
         (r, c), = joe.cells
         side = next(s for s in tiles.SIDES if TILES[grid[r][c]].socket(s) == "D")
         dr, dc = tiles.DELTA[side]
         self.assertEqual(places.driveways(city, joe, grid),
                          {city.vertex_at[(r + dr, c + dc)]: places.DRIVEWAY_METERS})  # fmt: skip
+
+    def test_places_without_a_driveway_are_disabled(self):
+        import places
+
+        grid = tiles.load_map(tiles.MAPS / "sample3.txt")
+        city = tiles.to_graph(grid)
+        found = places.find_places(grid)
+        park = places.find(found, "South's park")
+        self.assertFalse(park.accessible)  # multi-cell park: no entrance tile
+        with self.assertRaises(ValueError):
+            places.resolve("South's park", city, found)
+        r, c = park.cells[0]
+        with self.assertRaises(ValueError):
+            places.resolve(f"{r},{c}", city, found)
+        with self.assertRaises(ValueError):
+            places.with_places(city, park, None, grid)
+        # A building next to a road but without an entrance on that side is disabled too
+        grid = [[tile("road_deadend_r270"), tile("road_straight_r90_drive_s"), tile("road_deadend_r90")],
+                [tiles.EMPTY, tile("house_pool_drive_n"), tile("house_pool")]]  # fmt: skip
+        self.assertEqual(tiles.mismatches(grid), [])
+        house, other = places.find_places(grid)
+        self.assertTrue(house.accessible)
+        self.assertFalse(other.accessible)
 
     def test_planned_cities_get_entrances(self):
         for name in planner.style_names():

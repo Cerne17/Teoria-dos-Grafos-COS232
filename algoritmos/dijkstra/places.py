@@ -1,10 +1,12 @@
 """Places in a tile city (houses, malls, parks...) and routes between them.
 
 A place is one building: a single tile, every part of a multi-cell building
-(mall, skyscraper, slab), or a whole connected park / grey office block. Its
-driveways are the road tiles its drawn driveways (D sockets) meet; places
-without one fall back to the nearest road tiles: the ones touching it, or the
-first ones reached walking over non-road cells.
+(mall, skyscraper, slab), or a whole connected park / grey office block.
+
+A place is accessible when a car can reach it: one of its drawn driveways (a D
+side) meets a road's curb cut. Places without one are disabled: they can't be
+the start or destination of a route. Maps drawn before driveway tiles existed
+(no D anywhere) instead count a place as accessible when it touches a road.
 
 Names: houses get an owner ("Joe's house"); other places are named after their
 district ("Downtown's shopping mall"), which comes from the areas file made in
@@ -14,15 +16,14 @@ the builder (<map>.zones.json), or else from the map's compass region
     {"4,13": "Joe's house", "0,0": "City hall"}      # "row,col" of any of its cells
 
 For a route, the start place gets arcs out to its driveways and the destination
-gets arcs in from its driveways, so no route can cut through a building. A
-driveway costs DRIVEWAY_METERS plus TILE_METERS per cell walked to reach it.
-Everything else is the usual road graph.
+gets arcs in from its driveways (DRIVEWAY_METERS each), so no route can cut
+through a building. Everything else is the usual road graph.
 """
 
 import json
 import random
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import tiles
@@ -50,6 +51,11 @@ class Place:
     name: str
     kind: str
     cells: list[Cell]
+    access: dict[int, float] = field(default_factory=dict)  # road vertex -> metres
+
+    @property
+    def accessible(self) -> bool:
+        return bool(self.access)
 
     @property
     def center(self) -> Cell:
@@ -133,46 +139,36 @@ def find_places(
         for p in places:
             if cell in p.cells:
                 p.name = name
+
+    city = tiles.to_graph(grid)
+    for p in places:
+        p.access = driveways(city, p, grid)
     return places
 
 
-def driveways(city: CityGraph, place: Place, grid=None) -> dict[int, float]:
-    """Road vertices the place connects to -> metres to reach them.
+def uses_driveways(grid: Sequence[Sequence[int]]) -> bool:
+    """Is the map drawn with driveway tiles? (Older maps have none.)"""
+    return any("D" in TILES[t].sockets for row in grid for t in row)
 
-    With the grid given, the place's own driveways (a D side meeting a road's
-    D side) win. Otherwise: breadth-first walk from the place over non-road
-    cells; the first ring of road tiles reached are the driveways (all at the
-    same, smallest distance). Empty if nothing can be reached.
+
+def driveways(city: CityGraph, place: Place, grid: Sequence[Sequence[int]]) -> dict[int, float]:
+    """Road vertices a car can reach the place from -> metres (empty = inaccessible).
+
+    On maps with driveway tiles: the roads its D sides meet (and fit). On older
+    maps without any: the roads touching it.
     """
-    if grid is not None:
-        drawn = {}
-        for r, c in place.cells:
-            for side in SIDES:
-                dr, dc = DELTA[side]
-                v = city.vertex_at.get((r + dr, c + dc))
-                if (v is not None and TILES[grid[r][c]].socket(side) == "D"
-                        and tiles.fits(grid[r][c], side, grid[r + dr][c + dc])):  # fmt: skip
-                    drawn[v] = DRIVEWAY_METERS
-        if drawn:
-            return dict(sorted(drawn.items()))
-    frontier, seen, walked = list(place.cells), set(place.cells), 0
-    while frontier:
-        found = {}
-        for r, c in frontier:
-            for dr, dc in DELTA.values():
-                if (v := city.vertex_at.get((r + dr, c + dc))) is not None:
-                    found[v] = DRIVEWAY_METERS + walked * tiles.TILE_METERS
-        if found:
-            return dict(sorted(found.items()))
-        nxt = []
-        for r, c in frontier:
-            for dr, dc in DELTA.values():
-                cell = (r + dr, c + dc)
-                if cell not in seen and cell in city.walkable:
-                    seen.add(cell)
-                    nxt.append(cell)
-        frontier, walked = nxt, walked + 1
-    return {}
+    drawn = uses_driveways(grid)
+    access = {}
+    for r, c in place.cells:
+        for side in SIDES:
+            dr, dc = DELTA[side]
+            v = city.vertex_at.get((r + dr, c + dc))
+            if v is None:
+                continue
+            if not drawn or (TILES[grid[r][c]].socket(side) == "D"
+                             and tiles.fits(grid[r][c], side, grid[r + dr][c + dc])):  # fmt: skip
+                access[v] = DRIVEWAY_METERS
+    return dict(sorted(access.items()))
 
 
 def find(places: Sequence[Place], text: str) -> Place:
@@ -202,8 +198,12 @@ def with_places(
 
     A road endpoint stays as it is. A start place only gets arcs out to its
     driveways, a destination place only arcs in, so routes can't pass through
-    buildings. Returns (graph, source vertex, target vertex).
+    buildings. Returns (graph, source vertex, target vertex). Raises ValueError
+    for an inaccessible (disabled) place.
     """
+    for p in (source, target):
+        if isinstance(p, Place) and not p.accessible:
+            raise ValueError(inaccessible(p))
     extra = [p for p in (source, target) if isinstance(p, Place)]
     n = len(city.graph)
     graph = AdjacencyList(n + len(extra))
@@ -218,13 +218,13 @@ def with_places(
             continue
         v = n + extra.index(endpoint)
         names[v] = endpoint.name
-        for road, meters in driveways(city, endpoint, grid).items():
+        for road, meters in endpoint.access.items():
             if outgoing:
                 graph.add_edge(v, road, meters)
             else:
                 graph.add_edge(road, v, meters)
         ids.append(v)
-    return CityGraph(graph, cells, city.vertex_at, names, city.walkable), ids[0], ids[1]
+    return CityGraph(graph, cells, city.vertex_at, names), ids[0], ids[1]
 
 
 def load_names(map_path: Path) -> dict[str, str]:
@@ -245,9 +245,22 @@ def load_for(map_path: Path, grid) -> list[Place]:
     return find_places(grid, zones, load_names(map_path))
 
 
+def inaccessible(place: Place) -> str:
+    return f"{place.name} is disabled: no driveway reaches it from a street"
+
+
 def resolve(text: str, city: CityGraph, places: Sequence[Place]) -> "int | Place":
     """A route endpoint: 'row,col' (a road tile or any cell of a place), a road
-    vertex number ('17'), a place number ('P12') or a place name ('Joe's house')."""
+    vertex number ('17'), a place number ('P12') or a place name ('Joe's house').
+
+    Raises ValueError for unknown or inaccessible places."""
+    endpoint = _resolve(text, city, places)
+    if isinstance(endpoint, Place) and not endpoint.accessible:
+        raise ValueError(inaccessible(endpoint))
+    return endpoint
+
+
+def _resolve(text: str, city: CityGraph, places: Sequence[Place]) -> "int | Place":
     text = text.strip()
     if "," in text and all(part.strip().isdigit() for part in text.split(",")):
         cell = tuple(int(x) for x in text.split(","))
@@ -267,5 +280,6 @@ def resolve(text: str, city: CityGraph, places: Sequence[Place]) -> "int | Place
 
 def listing(places: Sequence[Place]) -> str:
     return "\n".join(f"P{p.id + 1:<4}{p.name:34s}{p.kind:15s}cell {p.center[0]},{p.center[1]}"
+                     + ("" if p.accessible else "   (no access: disabled)")
                      for p in places)  # fmt: skip
 

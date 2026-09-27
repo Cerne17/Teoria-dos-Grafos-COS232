@@ -225,6 +225,8 @@ class Builder:
         city = tiles.to_graph(self.grid)
         kwargs: dict = {"city": city, "bad_sides": tiles.mismatches(self.grid) + self.flagged}
         title = f"{self.path.name} — {self.rows}x{self.cols}"
+        if self.dijkstra_mode:
+            kwargs["disabled"] = [p for p in self.places() if not p.accessible]
         if self.dijkstra_mode and self.source is not None:
             city, source, target, endpoints = self.routed()
             distances, parent = shortest_paths(city.graph, source)
@@ -244,7 +246,7 @@ class Builder:
                 else:
                     title = f"{city.label(target)} is unreachable from {city.label(source)}"
         elif self.dijkstra_mode:
-            title = "Dijkstra mode — click a start: a building, park or road tile"
+            title = "Dijkstra mode — click a start: a building, park or road tile (grey = no access)"
         tile_city.draw(self.grid, title=title, ax=self.map_ax, **kwargs)
         if self.show_sockets:
             tile_city.draw_sockets(self.map_ax, self.grid)
@@ -597,8 +599,9 @@ class Builder:
     def pick_endpoint(self, r: int, c: int) -> None:
         try:
             endpoint = places_mod.resolve(f"{r},{c}", tiles.to_graph(self.grid), self.places())
-        except ValueError:
-            self.message = "empty pavement: click a building, park or road tile"
+        except ValueError as e:
+            # Empty pavement, or a disabled place that no driveway reaches
+            self.message = str(e)
             self.update_status()
             return
         if isinstance(endpoint, places_mod.Place):
@@ -635,15 +638,17 @@ class Builder:
             return None
         grid = [row[:] for row in self.grid]
         city, source, target, endpoints = self.routed()
+        self.disabled_now = [p for p in self.places() if not p.accessible]
         return grid, city, record_steps(city.graph, source), source, target, endpoints
 
     def open_steps(self) -> None:
         if (run := self._run()) is None:
             return
         grid, city, steps, source, target, endpoints = run
+        disabled = self.disabled_now
 
         def draw_panel(i: int, ax: plt.Axes) -> None:
-            tile_city_steps.draw_step(grid, city, steps, i, ax, target, endpoints)
+            tile_city_steps.draw_step(grid, city, steps, i, ax, target, endpoints, disabled)
 
         fig = browse(len(steps), draw_panel, f"Dijkstra from {city.label(source)}",
                      figsize=(12, 12 * self.rows / self.cols + 0.8), block=False)  # fmt: skip
@@ -657,7 +662,7 @@ class Builder:
         try:
             tile_city_steps.export_gif(out, grid, city, steps, source, target,
                                        title=f"Dijkstra on {self.path.stem} from {city.label(source)}",
-                                       places=endpoints)  # fmt: skip
+                                       places=endpoints, disabled=self.disabled_now)  # fmt: skip
         except Exception as e:  # keep the builder alive whatever goes wrong
             self.message = f"GIF export failed: {type(e).__name__}: {e}"
         else:

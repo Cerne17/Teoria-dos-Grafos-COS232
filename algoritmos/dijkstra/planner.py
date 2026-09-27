@@ -381,8 +381,12 @@ def plan(
     rng = random.Random(seed)
     planner = Planner(rows, cols, style, rng, zones)
     grid = planner.roads()
+    # Roads stay, but each may take a curb cut where a building's entrance meets it
     fixed = {
-        (r, c): t for r, row in enumerate(grid) for c, t in enumerate(row) if TILES[t].is_road
+        (r, c): tiles.with_driveways(t)
+        for r, row in enumerate(grid)
+        for c, t in enumerate(row)
+        if TILES[t].is_road
     }
     # One weight table per style, shared by its cells
     tables: dict[int, dict[str, float]] = {}

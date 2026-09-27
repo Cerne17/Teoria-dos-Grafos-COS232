@@ -6,7 +6,8 @@
     python builder.py --style downtown            # start with another style
 
 Mouse
-    palette (right)       left click: pick a tile
+    palette (right)       left click: pick a tile; ◀ ▶ buttons or [ ] change page
+                          (roads, curb cuts, parks & blocks, buildings, entrances)
     map (left)            left click / drag: paint     right click / drag: erase
                           middle click: pick the tile under the cursor
                           buildings (skyscraper, mall...): a click places the whole
@@ -59,7 +60,7 @@ from steps import record_steps
 from tiles import EMPTY, TILES
 
 PALETTE_COLS = tiles.ATLAS_COLS
-KEYS = set("rgfxoncusldtpyze") | {"escape"}
+KEYS = set("rgfxoncusldtpyze[]") | {"escape"}
 Cell = tuple[int, int]
 Zones = list[list[str | None]]
 MAX_SIZE = 60
@@ -109,12 +110,9 @@ class Builder:
         self.rng = random.Random()
         self.step_windows: list[plt.Figure] = []  # keep open viewers alive
 
-        palette_rows = -(-len(TILES) // PALETTE_COLS)
-        self.palette = [
-            [r * PALETTE_COLS + c if r * PALETTE_COLS + c < len(TILES) else EMPTY
-             for c in range(PALETTE_COLS)]
-            for r in range(palette_rows)
-        ]  # fmt: skip
+        self.pages = palette_pages()
+        self.page = 0
+        self.palette: list[list[int | None]] = []  # current page as a grid; None = padding
 
         map_w = 11
         self.fig = plt.figure(
@@ -122,7 +120,7 @@ class Builder:
             layout="constrained",
         )
         axes = self.fig.subplot_mosaic(
-            [["map", "pal"], ["map", "buttons"]], width_ratios=[map_w, 5], height_ratios=[4, 2.7]
+            [["map", "pal"], ["map", "buttons"]], width_ratios=[map_w, 5], height_ratios=[4, 3.1]
         )
         self.map_ax, self.pal_ax = axes["map"], axes["pal"]
         self.buttons = self._make_buttons(axes["buttons"])
@@ -140,6 +138,8 @@ class Builder:
     def _make_buttons(self, ax: plt.Axes) -> list[Button]:
         ax.set_axis_off()
         specs = [
+            ("◀ tiles  ([)", lambda: self.turn_page(-1), "#f2f2f2"),
+            ("tiles ▶  (])", lambda: self.turn_page(1), "#f2f2f2"),
             ("Plan city  (p)", self.plan_city, "#ffe3b3"),
             (self._style_label(), self.next_style, "#ffe3b3"),
             ("Fill all  (g)", self.fill_all, "#cfe8ff"),
@@ -155,16 +155,18 @@ class Builder:
         # Two per row; the size box takes the slot after the last button
         for k, (label, action, color) in enumerate(specs):
             row, col = divmod(k, 2)
-            bax = ax.inset_axes([col * 0.51, 0.86 - row * 0.166, 0.49, 0.13])
+            bax = ax.inset_axes([col * 0.51, 0.89 - row * 0.142, 0.49, 0.11])
             button = Button(bax, label, color=color, hovercolor="white")
             button.label.set_fontsize(9)
             button.on_clicked(lambda _event, action=action: action())
             buttons.append(button)  # keep a reference or the button stops working
+            if action == self.next_style:
+                self.style_button = button
         row = -(-len(specs) // 2)  # the row after the buttons
-        self.name_box = TextBox(ax.inset_axes([0.62, 0.86 - row * 0.166, 0.38, 0.13]), "Name  ",
+        self.name_box = TextBox(ax.inset_axes([0.62, 0.89 - row * 0.142, 0.38, 0.11]), "Name  ",
                                 initial="(click a place in d mode)")  # fmt: skip
         self.name_box.on_submit(self.rename_place)
-        self.size_box = TextBox(ax.inset_axes([0.11, 0.86 - row * 0.166, 0.38, 0.13]),
+        self.size_box = TextBox(ax.inset_axes([0.11, 0.89 - row * 0.142, 0.38, 0.11]),
                                 "Size  ",
                                 initial=f"{self.rows}x{self.cols}")  # fmt: skip
         self.size_box.on_submit(self.resize)
@@ -175,23 +177,25 @@ class Builder:
     def draw_palette(self) -> None:
         ax = self.pal_ax
         ax.clear()
-        rows = len(self.palette)
-        ax.imshow(tiles.render(self.palette), extent=(0, PALETTE_COLS, rows, 0),
-                  interpolation="nearest")  # fmt: skip
-        pad = len(TILES)  # cells after the last tile are padding, not tiles
-        tile_city.draw_sockets(ax, [[t if r * PALETTE_COLS + c < pad else EMPTY
-                                     for c, t in enumerate(row)]
-                                    for r, row in enumerate(self.palette)], size=4.5)  # fmt: skip
+        title, indices = self.pages[self.page]
+        rows = -(-len(indices) // PALETTE_COLS)
+        self.palette = [[indices[k] if (k := r * PALETTE_COLS + c) < len(indices) else None
+                         for c in range(PALETTE_COLS)] for r in range(rows)]  # fmt: skip
+        shown = [[EMPTY if t is None else t for t in row] for row in self.palette]
+        ax.imshow(tiles.render(shown), extent=(0, PALETTE_COLS, rows, 0), interpolation="nearest")
+        tile_city.draw_sockets(ax, shown, size=4.5)
         # Separators, so each marker clearly belongs to one tile
         ax.hlines(range(1, rows), 0, PALETTE_COLS, color="white", linewidth=2)
         ax.vlines(range(1, PALETTE_COLS), 0, rows, color="white", linewidth=2)
-        r, c = divmod(self.selected, PALETTE_COLS)
-        ax.add_patch(Rectangle((c, r), 1, 1, fill=False, edgecolor="red", linewidth=2.5))
+        if self.selected in indices:
+            r, c = divmod(indices.index(self.selected), PALETTE_COLS)
+            ax.add_patch(Rectangle((c, r), 1, 1, fill=False, edgecolor="red", linewidth=2.5))
         ax.set_xlim(0, PALETTE_COLS)
         ax.set_ylim(rows, 0)
         ax.set_axis_off()
         t = TILES[self.selected]
-        ax.set_title(f"picked {t.index}: {t.name}\n{t.describe()}", fontsize=9)
+        ax.set_title(f"page {self.page + 1}/{len(self.pages)}: {title}   ◀ ▶ or [ ]\n"
+                     f"picked {t.index}: {t.name} — {t.describe()}", fontsize=9)  # fmt: skip
         tile_city.socket_legend(ax, loc="upper center", bbox_to_anchor=(0.5, 0.0))
 
     def places(self) -> list[places_mod.Place]:
@@ -200,9 +204,21 @@ class Builder:
     def routed(self):
         """(graph with the chosen place endpoints, source vertex, target vertex, places)."""
         city = tiles.to_graph(self.grid)
-        routed, source, target = places_mod.with_places(city, self.source, self.target)
+        routed, source, target = places_mod.with_places(city, self.source, self.target, self.grid)
         endpoints = [p for p in (self.source, self.target) if isinstance(p, places_mod.Place)]
         return routed, source, target, endpoints
+
+    def select(self, index: int) -> None:
+        """Picks a tile and shows the palette page it is on."""
+        self.selected = index
+        self.page = next(i for i, (_, ids) in enumerate(self.pages) if index in ids)
+        self.draw_palette()
+        self.update_status()
+
+    def turn_page(self, step: int) -> None:
+        self.page = (self.page + step) % len(self.pages)
+        self.draw_palette()
+        self.fig.canvas.draw_idle()
 
     def redraw(self) -> None:
         self.map_ax.clear()
@@ -338,7 +354,7 @@ class Builder:
         i = self.styles.index(self.style_name) if self.style_name in self.styles else -1
         self.style_name = self.styles[(i + 1) % len(self.styles)]
         self.style = planner.Style.load(self.style_name)
-        self.buttons[1].label.set_text(self._style_label())
+        self.style_button.label.set_text(self._style_label())
         self.message = f"style {self.style_name} — press p to plan a city, f for its scenery"
         self.update_status()
 
@@ -355,7 +371,7 @@ class Builder:
         cells = {(r, c) for r in range(self.rows) for c in range(self.cols)}
         self.set_grid(grid, f"planned a {self.style_name} city — press again to re-roll", cells)
 
-    def _generate(self, fixed: dict[Cell, int], what: str, scenery_only: bool = False) -> None:
+    def _generate(self, fixed: dict, what: str, scenery_only: bool = False) -> None:
         weights = self.style.scenery_weights() if scenery_only else wfc.DEFAULT_WEIGHTS
         cell_weights = None
         if scenery_only and (zones := self._zone_styles()):
@@ -379,18 +395,21 @@ class Builder:
         self._generate(self._painted(), "fill all")
 
     def fill_scenery(self) -> None:
+        # Roads stay, but may gain or lose curb cuts to match the new entrances
         roads = {
-            (r, c): t
+            (r, c): tiles.with_driveways(tiles.without_driveways(t))
             for r, row in enumerate(self.grid)
             for c, t in enumerate(row)
             if TILES[t].is_road
         }
-        self._generate(self._painted() | roads, "fill scenery", scenery_only=True)
+        painted = {cell: t for cell, t in self._painted().items() if not TILES[t].is_road}
+        self._generate(painted | roads, "fill scenery", scenery_only=True)
 
-    def _loose_ends(self, fixed: dict[Cell, int]) -> list[tuple[int, int, str]]:
+    def _loose_ends(self, fixed: dict) -> list[tuple[int, int, str]]:
         """Road sides of kept tiles that face a cell only scenery could fill (or the edge)."""
         loose = []
         for (r, c), t in fixed.items():
+            t = t if isinstance(t, int) else t[0]  # a kept road with its driveway variants
             for side, sock in zip(tiles.SIDES, TILES[t].sockets):
                 if sock in "RIO":
                     dr, dc = tiles.DELTA[side]
@@ -517,8 +536,8 @@ class Builder:
 
     def on_press(self, event) -> None:
         if (cell := self._cell(event, self.pal_ax)) is not None:
-            index = cell[0] * PALETTE_COLS + cell[1]
-            if index < len(TILES):
+            index = self.palette[cell[0]][cell[1]]
+            if index is not None:
                 self.selected = index
                 self.draw_palette()
                 self.update_status()
@@ -534,8 +553,7 @@ class Builder:
         if self.dijkstra_mode:
             self.pick_endpoint(r, c)
         elif event.button == 2:
-            self.selected = self.grid[r][c]
-            self.draw_palette()
+            self.select(self.grid[r][c])
             self.update_status()
         else:
             self.snapshot()
@@ -571,8 +589,8 @@ class Builder:
                 origin += f" [area: {self.zones[r][c]}]"
             self.update_status(f"cell {r},{c}{origin}: {t.name} — {t.describe()}")
         elif (cell := self._cell(event, self.pal_ax)) is not None:
-            index = cell[0] * PALETTE_COLS + cell[1]
-            if index < len(TILES):
+            index = self.palette[cell[0]][cell[1]]
+            if index is not None:
                 t = TILES[index]
                 self.update_status(f"tile {t.index} {t.name} — {t.describe()}")
 
@@ -636,13 +654,14 @@ class Builder:
             return
         grid, city, steps, source, target, endpoints = run
         out = self.path.with_name(f"{self.path.stem}_dijkstra.gif")
-        self.message = f"exporting {len(steps)} frames..."
-        self.update_status()
-        self.fig.canvas.flush_events()
-        tile_city_steps.export_gif(out, grid, city, steps, source, target,
-                                   title=f"Dijkstra on {self.path.stem} from {city.label(source)}",
-                                   places=endpoints)  # fmt: skip
-        self.message = f"saved {out}"
+        try:
+            tile_city_steps.export_gif(out, grid, city, steps, source, target,
+                                       title=f"Dijkstra on {self.path.stem} from {city.label(source)}",
+                                       places=endpoints)  # fmt: skip
+        except Exception as e:  # keep the builder alive whatever goes wrong
+            self.message = f"GIF export failed: {type(e).__name__}: {e}"
+        else:
+            self.message = f"saved {out} ({len(steps)} frames)"
         self.update_status()
 
     def on_key(self, event) -> None:
@@ -651,9 +670,9 @@ class Builder:
         key = event.key
         if key == "r":
             options = tiles.rotations_of(self.selected)
-            self.selected = options[(options.index(self.selected) + 1) % len(options)]
-            self.draw_palette()
-            self.update_status()
+            self.select(options[(options.index(self.selected) + 1) % len(options)])
+        elif key in ("[", "]"):
+            self.turn_page(-1 if key == "[" else 1)
         elif key == "p":
             self.plan_city()
         elif key == "z":
@@ -695,6 +714,27 @@ class Builder:
             self.open_steps()
         elif key == "e":
             self.export_gif()
+
+
+def palette_pages() -> list[tuple[str, list[int]]]:
+    """The palette split into pages, so 200+ tiles stay big enough to see."""
+    def has_d(t):
+        return "D" in t.sockets
+
+    scenery = ("park_", "block_", "parking_lot", "plaza", "tower")
+    pages = [
+        ("roads", [t.index for t in TILES if t.is_road and not has_d(t)]),
+        ("roads with curb cuts", [t.index for t in TILES if t.is_road and has_d(t)]),
+        ("parks, blocks, lots, plazas",
+         [t.index for t in TILES if not t.is_road and not has_d(t)
+          and (t.base.startswith(scenery) or t.index == EMPTY)]),
+        ("buildings",
+         [t.index for t in TILES if not t.is_road and not has_d(t)
+          and not t.base.startswith(scenery) and t.index != EMPTY]),
+        ("with entrances (driveways)", [t.index for t in TILES if not t.is_road and has_d(t)]),
+    ]  # fmt: skip
+    assert sorted(i for _, ids in pages for i in ids) == list(range(len(TILES)))
+    return pages
 
 
 def _resized(grid: list[list], rows: int, cols: int, fill) -> list[list]:

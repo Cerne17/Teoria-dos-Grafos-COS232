@@ -113,7 +113,7 @@ if __name__ == "__main__":
     except ValueError as e:
         parser.error(str(e))
     # Adds vertices for start/destination places (driveways only out / only in)
-    city, source, target = places_mod.with_places(roads, src, dst)
+    city, source, target = places_mod.with_places(roads, src, dst, grid)
     endpoints = [p for p in (src, dst) if isinstance(p, places_mod.Place)]
 
     steps = record_steps(city.graph, source)

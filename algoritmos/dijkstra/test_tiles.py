@@ -306,9 +306,69 @@ class TestGif(unittest.TestCase):
                 self.assertEqual(image.n_frames, 5)
         finally:
             path.unlink(missing_ok=True)
+        import matplotlib.pyplot as plt
+
+        self.assertEqual(plt.get_fignums(), [])  # drawn off-screen: no pyplot window
         text = gif.describe(steps, 1, 0)
         self.assertIn("step 2 / 5", text)
         self.assertIn("frontier", text)
+
+
+class TestDriveways(unittest.TestCase):
+    def test_catalogue_comes_from_the_manifest(self):
+        import json
+
+        manifest = json.loads(tiles.CATALOGUE.read_text())
+        self.assertEqual(len(TILES), len(manifest) + 1)  # + empty pavement
+        for entry in manifest:
+            self.assertEqual(TILES[entry["index"]].sockets, entry["sockets"])
+
+    def test_driveways_only_meet_driveways(self):
+        road, house = tile("road_straight_r90_drive_s"), tile("house_pool_drive_n")
+        self.assertTrue(tiles.fits(road, "S", house))
+        self.assertFalse(tiles.fits(tile("road_straight_r90"), "S", house))
+        self.assertFalse(tiles.fits(road, "S", tile("house_pool")))
+        self.assertEqual(tiles.without_driveways(road), tile("road_straight_r90"))
+        self.assertIn(road, tiles.with_driveways(tile("road_straight_r90")))
+
+    def test_building_with_an_entrance_is_still_one_building(self):
+        grid = tiles.blank(3, 3)
+        for x in range(2):
+            for y in range(2):
+                grid[y][x] = tile(f"skyscraper_2x2_{x}_{y}")
+        grid[0][0] = tile("skyscraper_2x2_0_0_drive_w")
+        self.assertEqual(len(tiles.building_cells(grid, 1, 1)), 4)
+
+    def test_third_sample_fits_and_places_use_their_drawn_driveways(self):
+        import places
+
+        grid = tiles.load_map(tiles.MAPS / "sample3.txt")
+        self.assertEqual(tiles.from_image(tiles.ASSETS / "sample_city_3.png"), grid)
+        self.assertEqual(tiles.mismatches(grid), [])
+        city = tiles.to_graph(grid)
+        joe = places.find(places.find_places(grid), "Joe's house")
+        (r, c), = joe.cells
+        side = next(s for s in tiles.SIDES if TILES[grid[r][c]].socket(s) == "D")
+        dr, dc = tiles.DELTA[side]
+        self.assertEqual(places.driveways(city, joe, grid),
+                         {city.vertex_at[(r + dr, c + dc)]: places.DRIVEWAY_METERS})  # fmt: skip
+
+    def test_planned_cities_get_entrances(self):
+        for name in planner.style_names():
+            grid = planner.plan(12, 18, planner.Style.load(name), 2)
+            self.assertEqual(tiles.mismatches(grid), [])
+            self.assertTrue(any("D" in TILES[t].sockets for row in grid for t in row), name)
+
+    def test_driveway_knob_zero_means_no_curb_cuts(self):
+        style = planner.Style.load("mixed").with_overrides(["scenery.driveway=0"])
+        grid = planner.plan(10, 14, style, 1)
+        self.assertFalse(any(TILES[t].is_road and "D" in TILES[t].sockets for row in grid for t in row))
+
+    def test_palette_pages_cover_every_tile_once(self):
+        import builder
+
+        ids = [i for _, page in builder.palette_pages() for i in page]
+        self.assertEqual(sorted(ids), list(range(len(TILES))))
 
 
 if __name__ == "__main__":

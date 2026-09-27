@@ -14,6 +14,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
 from PIL import Image
 
 from steps import Step
@@ -86,9 +88,11 @@ def export(
 
     The last frame stays on screen for hold_last seconds before looping.
     """
-    fig, (ax, info) = plt.subplots(
-        1, 2, figsize=figsize, width_ratios=[figsize[0] - 4, 4], layout="constrained"
-    )
+    # An off-screen figure: no window is created, so exporting from inside an
+    # interactive app (the builder) never touches its GUI event loop
+    fig = Figure(figsize=figsize, dpi=dpi, layout="constrained")
+    canvas = FigureCanvasAgg(fig)
+    ax, info = fig.subplots(1, 2, width_ratios=[figsize[0] - 4, 4])
     frames = []
     for i in range(count):
         ax.clear()
@@ -99,11 +103,10 @@ def export(
                   transform=info.transAxes)  # fmt: skip
         if title:
             fig.suptitle(title)
-        fig.canvas.draw()
-        frame = Image.frombuffer("RGBA", fig.canvas.get_width_height(),
-                                 fig.canvas.buffer_rgba(), "raw", "RGBA", 0, 1)  # fmt: skip
+        canvas.draw()
+        frame = Image.frombuffer("RGBA", canvas.get_width_height(),
+                                 canvas.buffer_rgba(), "raw", "RGBA", 0, 1)  # fmt: skip
         frames.append(frame.convert("RGB"))
-    plt.close(fig)
 
     # One shared 256-colour palette (taken from the first and last frames, which
     # between them show every colour used): frames then differ only where the

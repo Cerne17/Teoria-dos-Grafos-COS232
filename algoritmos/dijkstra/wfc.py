@@ -17,7 +17,7 @@ behaves like empty pavement, so no road, park or block runs off the edge.
 import argparse
 import math
 import random
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 import networkx as nx
@@ -40,6 +40,8 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "parking_lot": 0.4, "plaza": 0.3, "tower": 0.3, "empty": 3,
     "house_pool": 0.4, "house_pair": 0.4, "house_garden": 0.4, "house_row": 0.3,
     "apartment_a": 0.3, "apartment_b": 0.3, "office_glass": 0.3, "shops": 0.3,
+    # Chance-like weight of a curb cut on a kept road, vs 1 for no cut (see generate)
+    "driveway": 0.5,
     # Multi-cell buildings: the weight applies to each part
     "skyscraper_2x2": 0.15, "slab_2x1": 0.2, "slab_1x2": 0.2, "mall_3x2": 0.1, "mall_2x3": 0.1,
 }  # fmt: skip
@@ -54,7 +56,10 @@ class Unsatisfiable(Contradiction):
 
 
 def scenery_weights(weights: Mapping[str, float] = DEFAULT_WEIGHTS) -> dict[str, float]:
-    """weights without any road tile: parks, blocks, parking lots, plazas, pavement."""
+    """weights without any road tile: parks, blocks, parking lots, plazas, pavement.
+
+    Roads can still be kept as fixed cells; see generate(fixed=...).
+    """
     road_bases = {t.base for t in TILES if t.is_road}
     return {base: 0.0 if base in road_bases else w for base, w in weights.items()}
 
@@ -78,6 +83,7 @@ class WaveFunctionCollapse:
         # Distinct weight tables ("profiles") and which one each cell uses
         profiles: dict[int, int] = {}
         self.profiles: list[list[float]] = []
+        self.kept_weights: list[list[float]] = []  # for fixed cells with several options
         self.profile_of: list[int] = []
         for r in range(rows):
             for c in range(cols):
@@ -85,6 +91,11 @@ class WaveFunctionCollapse:
                 if id(table) not in profiles:
                     profiles[id(table)] = len(self.profiles)
                     self.profiles.append([table.get(t.base, 0.0) for t in TILES])
+                    # How likely a kept road is to get a curb cut, among its options
+                    driveway = table.get("driveway", DEFAULT_WEIGHTS["driveway"])
+                    self.kept_weights.append(
+                        [driveway ** t.sockets.count("D") for t in TILES]
+                    )
                 self.profile_of.append(profiles[id(table)])
         self.all_tiles = [
             sum(1 << t.index for t in TILES if w[t.index] > 0) for w in self.profiles
@@ -149,14 +160,19 @@ class WaveFunctionCollapse:
                     domains[nb] = narrowed
                     stack.append(nb)
 
-    def _initial(self, fixed: Mapping[tuple[int, int], int]) -> list[int]:
+    def _initial(self, fixed: Mapping[tuple[int, int], "int | Iterable[int]"]) -> list[int]:
         outside_ok = {d: self._allowed(1 << EMPTY, d) for d in SIDES}
         domains = []
         for cell in range(self.rows * self.cols):
             r, c = divmod(cell, self.cols)
             # A fixed tile is allowed even if its weight is 0 (e.g. roads when
             # only scenery is being generated around them)
-            domain = 1 << fixed[(r, c)] if (r, c) in fixed else self.all_tiles[self.profile_of[cell]]
+            if (r, c) in fixed:
+                pinned = fixed[(r, c)]
+                pinned = [pinned] if isinstance(pinned, int) else pinned
+                domain = sum(1 << t for t in pinned)
+            else:
+                domain = self.all_tiles[self.profile_of[cell]]
             # Sockets facing the border must accept empty pavement outside
             for side in SIDES:
                 dr, dc = DELTA[side]
@@ -171,7 +187,7 @@ class WaveFunctionCollapse:
             raise Unsatisfiable(f"nothing fits at {e.args[0]}") from None
         return domains
 
-    def run(self, fixed: Mapping[tuple[int, int], int] = {}) -> list[list[int]]:
+    def run(self, fixed: Mapping[tuple[int, int], "int | Iterable[int]"] = {}) -> list[list[int]]:
         domains = self._initial(fixed)
         while True:
             open_cells = [i for i, m in enumerate(domains) if m & (m - 1)]
@@ -181,7 +197,12 @@ class WaveFunctionCollapse:
             cell = min(open_cells, key=lambda i: self._entropy(i, domains[i]) + self.rng.random() * 1e-6)
             options = self._bits(domains[cell])
             weights = self.profiles[self.profile_of[cell]]
-            choice = self.rng.choices(options, weights=[weights[t] for t in options])[0]
+            ws = [weights[t] for t in options]
+            if not any(ws):  # a fixed cell whose options all weigh 0 (e.g. kept roads)
+                ws = [self.kept_weights[self.profile_of[cell]][t] for t in options]
+                if not any(ws):  # e.g. driveway=0 but a painted entrance forces a curb cut
+                    ws = [1.0] * len(options)
+            choice = self.rng.choices(options, weights=ws)[0]
             domains[cell] = 1 << choice
             self._propagate(domains, [cell])
         return [
@@ -195,11 +216,12 @@ def generate(
     cols: int,
     seed: int | None = None,
     weights: Mapping[str, float] = DEFAULT_WEIGHTS,
-    fixed: Mapping[tuple[int, int], int] = {},
+    fixed: Mapping[tuple[int, int], "int | Iterable[int]"] = {},
     attempts: int = 100,
     cell_weights: Sequence[Sequence[Mapping[str, float]]] | None = None,
 ) -> list[list[int]]:
-    """A city whose sockets all fit. fixed pins (row, col) -> tile beforehand;
+    """A city whose sockets all fit. fixed pins (row, col) -> a tile, or a set of
+    allowed tiles (e.g. a road and its driveway variants) beforehand;
     cell_weights (rows x cols of weight tables) overrides weights per cell.
 
     Raises Unsatisfiable at once if the fixed tiles can't be completed with

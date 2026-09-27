@@ -2,8 +2,9 @@
 
 A place is one building: a single tile, every part of a multi-cell building
 (mall, skyscraper, slab), or a whole connected park / grey office block. Its
-driveways are the nearest road tiles: the ones touching it, or, for places set
-back from the street, the first ones reached walking over non-road cells.
+driveways are the road tiles its drawn driveways (D sockets) meet; places
+without one fall back to the nearest road tiles: the ones touching it, or the
+first ones reached walking over non-road cells.
 
 Names: houses get an owner ("Joe's house"); other places are named after their
 district ("Downtown's shopping mall"), which comes from the areas file made in
@@ -99,7 +100,7 @@ def find_places(
             if t.part:
                 cells = [(rr, cc) for rr, cc, _ in tiles.building_cells(grid, r, c)]
                 kind = KINDS.get(t.base, t.base)
-            elif "P" in t.sockets or t.base.startswith("park"):
+            elif "P" in t.sockets or t.base.startswith("park_"):
                 cells, kind = _group(grid, r, c, "P"), "park"
             elif "B" in t.sockets or t.base.startswith("block_") and t.base != "block_single":
                 cells, kind = _group(grid, r, c, "B"), "office block"
@@ -135,13 +136,25 @@ def find_places(
     return places
 
 
-def driveways(city: CityGraph, place: Place) -> dict[int, float]:
-    """Nearest road vertices -> metres to reach them from the place.
+def driveways(city: CityGraph, place: Place, grid=None) -> dict[int, float]:
+    """Road vertices the place connects to -> metres to reach them.
 
-    Breadth-first walk from the place over non-road cells; the first ring of
-    road tiles reached are the driveways (all at the same, smallest distance).
-    Empty if the place is walled in by the map edge only.
+    With the grid given, the place's own driveways (a D side meeting a road's
+    D side) win. Otherwise: breadth-first walk from the place over non-road
+    cells; the first ring of road tiles reached are the driveways (all at the
+    same, smallest distance). Empty if nothing can be reached.
     """
+    if grid is not None:
+        drawn = {}
+        for r, c in place.cells:
+            for side in SIDES:
+                dr, dc = DELTA[side]
+                v = city.vertex_at.get((r + dr, c + dc))
+                if (v is not None and TILES[grid[r][c]].socket(side) == "D"
+                        and tiles.fits(grid[r][c], side, grid[r + dr][c + dc])):  # fmt: skip
+                    drawn[v] = DRIVEWAY_METERS
+        if drawn:
+            return dict(sorted(drawn.items()))
     frontier, seen, walked = list(place.cells), set(place.cells), 0
     while frontier:
         found = {}
@@ -183,7 +196,7 @@ def find(places: Sequence[Place], text: str) -> Place:
 
 
 def with_places(
-    city: CityGraph, source: "int | Place", target: "int | Place | None"
+    city: CityGraph, source: "int | Place", target: "int | Place | None", grid=None
 ) -> tuple[CityGraph, int, int | None]:
     """The road graph plus vertices for a start and/or destination place.
 
@@ -205,7 +218,7 @@ def with_places(
             continue
         v = n + extra.index(endpoint)
         names[v] = endpoint.name
-        for road, meters in driveways(city, endpoint).items():
+        for road, meters in driveways(city, endpoint, grid).items():
             if outgoing:
                 graph.add_edge(v, road, meters)
             else:

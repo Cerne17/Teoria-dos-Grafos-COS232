@@ -7,6 +7,7 @@ Each tile has a socket on every side (N, E, S, W):
     R  two-way road                       B  city block continues
     I  one-way road entering the tile     O  one-way road leaving the tile
     M  inside a multi-cell building (skyscraper, mall...)
+    D  driveway: a building's entrance meeting a road's curb cut (D-D only)
 
 Two neighbours fit when their facing sockets match: R-R, O-I, I-O, P-P, B-B, .-.
 M-M fits only between parts of the same building in their right places, e.g.
@@ -22,6 +23,8 @@ from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 
+import json
+
 import numpy as np
 from PIL import Image
 
@@ -29,6 +32,7 @@ from adjacency_list_weighted import AdjacencyList
 
 ASSETS = Path(__file__).parent / "city"
 ATLAS = ASSETS / "atlas@5x.png"
+CATALOGUE = ASSETS / "tiles.json"  # name, base, sockets and building part of every tile
 MAPS = ASSETS / "maps"
 ATLAS_COLS, ATLAS_SCALE, TILE_PX = 10, 5, 32
 TILE_METERS = 10
@@ -36,57 +40,7 @@ TILE_METERS = 10
 SIDES = "NESW"
 DELTA = {"N": (-1, 0), "E": (0, 1), "S": (1, 0), "W": (0, -1)}  # (row, col)
 OPPOSITE = {"N": "S", "E": "W", "S": "N", "W": "E"}
-MATCH = {"R": "R", "O": "I", "I": "O", "P": "P", "B": "B", ".": "."}
-
-# (base name, sockets N E S W at r0, rotations present in the atlas), in atlas order.
-# rotation k turns the tile 90*k degrees clockwise.
-_BASES: list[tuple[str, str, Sequence[int | None] | str]] = [
-    ("road_straight", "R.R.", (0, 1)),
-    ("road_crosswalk", "R.R.", (0, 1)),
-    ("road_curve", ".RR.", (0, 1, 2, 3)),
-    ("road_t", ".RRR", (0, 1, 2, 3)),
-    ("road_cross", "RRRR", (None,)),
-    ("road_deadend", "..R.", (0, 1, 2, 3)),
-    ("roundabout_4", "RRRR", (None,)),
-    ("roundabout_3", ".RRR", (0, 1, 2, 3)),
-    ("oneway_straight", "O.I.", (0, 1, 2, 3)),  # drives S -> N
-    ("oneway_curve_a", ".OI.", (0, 1, 2, 3)),  # drives S -> E
-    ("oneway_curve_b", ".IO.", (0, 1, 2, 3)),  # drives E -> S
-    ("oneway_cross", "OOII", (0, 1, 2, 3)),  # W -> E crossing S -> N
-    ("mixed_t_in", ".RIR", (0, 1, 2, 3)),  # one-way stem entering
-    ("mixed_t_out", ".ROR", (0, 1, 2, 3)),  # one-way stem leaving
-    ("mixed_cross", "RORI", (0, 1, 2, 3)),  # W -> E crossing a two-way N-S
-    ("park_single", "....", (None,)),
-    ("park_cap", "P...", (0, 1, 2, 3)),
-    ("park_corner", "PP..", (0, 1, 2, 3)),
-    ("park_strip", "P.P.", (0, 1)),
-    ("park_edge", "PPP.", (0, 1, 2, 3)),
-    ("park_center", "PPPP", (None,)),
-    ("block_single", "....", (None,)),
-    ("block_cap", "B...", (0, 1, 2, 3)),
-    ("block_corner", "BB..", (0, 1, 2, 3)),
-    ("block_strip", "B.B.", (0, 1)),
-    ("block_edge", "BBB.", (0, 1, 2, 3)),
-    ("block_center", "BBBB", (None,)),
-    ("parking_lot", "....", (0, 1)),
-    ("plaza", "....", (None,)),
-    ("tower", "....", (None,)),
-    ("house_pool", "....", (None,)),
-    ("house_pair", "....", (None,)),
-    ("house_garden", "....", (None,)),
-    ("house_row", "....", (None,)),
-    ("apartment_a", "....", (None,)),
-    ("apartment_b", "....", (None,)),
-    ("office_glass", "....", (None,)),
-    ("shops", "....", (None,)),
-    # Multi-cell buildings: one tile per part, sockets derived from the size
-    ("skyscraper_2x2", "", "piece"),
-    ("slab_2x1", "", "piece"),
-    ("slab_1x2", "", "piece"),
-    ("mall_3x2", "", "piece"),
-    ("mall_2x3", "", "piece"),
-]
-
+MATCH = {"R": "R", "O": "I", "I": "O", "P": "P", "B": "B", "D": "D", ".": "."}
 
 @dataclass(frozen=True)
 class Tile:
@@ -106,40 +60,20 @@ class Tile:
     def describe(self) -> str:
         """Sides in words, e.g. 'N exit, S entrance' (sides with nothing are left out)."""
         words = {"R": "two-way", "I": "entrance", "O": "exit", "P": "park", "B": "block",
-                 "M": "same building"}  # fmt: skip
+                 "M": "same building", "D": "driveway"}  # fmt: skip
         parts = [f"{side} {words[s]}" for side, s in zip(SIDES, self.sockets) if s != "."]
         return ", ".join(parts) or "no connections"
 
 
-def _rotate(sockets: str, k: int) -> str:
-    """Sockets after turning the tile 90*k degrees clockwise: N moves to E, and so on."""
-    k %= 4
-    return sockets[-k:] + sockets[:-k] if k else sockets
-
-
-def _pieces(base: str, first: int) -> list[Tile]:
-    """Parts of a WxH building, row by row: M on sides shared with another part."""
-    w, h = (int(n) for n in base.rsplit("_", 1)[1].split("x"))
-    parts = []
-    for y in range(h):
-        for x in range(w):
-            sockets = "".join(
-                "M" if inside else "."
-                for inside in (y > 0, x < w - 1, y < h - 1, x > 0)  # N E S W
-            )
-            parts.append(Tile(first + len(parts), f"{base}_{x}_{y}", base, sockets, (x, y, w, h)))
-    return parts
-
-
 def _build() -> list[Tile]:
+    """The catalogue from city/tiles.json (index, name, base, sockets, part), in atlas order."""
+    entries = json.loads(CATALOGUE.read_text())
     tiles = []
-    for base, sockets, rotations in _BASES:
-        if rotations == "piece":
-            tiles.extend(_pieces(base, len(tiles)))
-            continue
-        for k in rotations:
-            name = base if k is None else f"{base}_r{90 * k}"
-            tiles.append(Tile(len(tiles), name, base, _rotate(sockets, k or 0)))
+    for i, e in enumerate(entries):
+        if e["index"] != i:
+            raise ValueError(f"{CATALOGUE}: entry {i} has index {e['index']}")
+        part = tuple(e["part"]) if e.get("part") else None
+        tiles.append(Tile(i, e["name"], e["base"], e["sockets"], part))
     # Plain pavement is not in the atlas; the builder and the generator need it
     tiles.append(Tile(len(tiles), "empty", "empty", "...."))
     return tiles
@@ -164,10 +98,12 @@ def fits(a: int, side: str, b: int) -> bool:
 
 def rotations_of(index: int) -> list[int]:
     """All tiles sharing index's base, in atlas order (r0, r90, ...)."""
-    if TILES[index].part:
+    t = TILES[index]
+    if t.part:
         return [index]  # building parts don't rotate
-    base = TILES[index].base
-    return [t.index for t in TILES if t.base == base]
+    # Same base and same number of driveways: r0/r90/... or drive_n/drive_e/...
+    return [u.index for u in TILES
+            if u.base == t.base and not u.part and u.sockets.count("D") == t.sockets.count("D")]  # fmt: skip
 
 
 # ---- images -----------------------------------------------------------------
@@ -314,10 +250,30 @@ def building_cells(grid: Sequence[Sequence[int]], r: int, c: int) -> list[tuple[
     for py in range(h):
         for px in range(w):
             rr, cc = top + py, left + px
-            index = BY_NAME[f"{t.base}_{px}_{py}"].index
-            if 0 <= rr < len(grid) and 0 <= cc < len(grid[0]) and grid[rr][cc] == index:
-                cells.append((rr, cc, index))
+            if not (0 <= rr < len(grid) and 0 <= cc < len(grid[0])):
+                continue
+            other = TILES[grid[rr][cc]]  # any variant of the right part (e.g. with a driveway)
+            if other.base == t.base and other.part == (px, py, w, h):
+                cells.append((rr, cc, grid[rr][cc]))
     return cells
+
+
+def without_driveways(index: int) -> int:
+    """The plain version of a driveway variant (the tile itself if it has none)."""
+    t = TILES[index]
+    plain = t.sockets.replace("D", ".")
+    return next(u.index for u in TILES
+                if u.base == t.base and u.part == t.part and u.sockets == plain)  # fmt: skip
+
+
+def with_driveways(index: int) -> list[int]:
+    """index plus its variants that add driveways (D) on some of its empty sides."""
+    t = TILES[index]
+    return [
+        u.index for u in TILES
+        if u.base == t.base and u.part == t.part
+        and all(a == b or (a == "." and b == "D") for a, b in zip(t.sockets, u.sockets))
+    ]  # fmt: skip
 
 
 def blank(rows: int, cols: int) -> list[list[int]]:

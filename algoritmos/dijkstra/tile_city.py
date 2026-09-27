@@ -47,18 +47,22 @@ def parse_vertex(text: str, city: CityGraph) -> int:
 # Triangles point the way traffic flows: into the tile (entrance) or out (exit).
 _INWARD = {"N": "v", "S": "^", "E": "<", "W": ">"}
 _OUTWARD = {"N": "^", "S": "v", "E": ">", "W": "<"}
-SOCKET_COLORS = {"R": "#29a8e0", "I": "#2ecc40", "O": "#ff4136"}
+SOCKET_COLORS = {"R": "#29a8e0", "I": "#2ecc40", "O": "#ff4136", "D": "#9e9e9e"}
 
 
 def draw_sockets(ax: plt.Axes, grid: Sequence[Sequence[int]], size: float = 6) -> None:
-    """Marks every road side: dot = two-way, green triangle in = entrance, red out = exit."""
+    """Marks every road side: dot = two-way, green triangle in = entrance, red out = exit,
+    grey square = driveway (a building's entrance or a road's curb cut)."""
     groups: dict[tuple[str, str], tuple[list[float], list[float]]] = {}
     for r, row in enumerate(grid):
         for c, t in enumerate(row):
             for side, sock in zip(tiles.SIDES, tiles.TILES[t].sockets):
                 if sock not in SOCKET_COLORS:
                     continue
-                marker = "o" if sock == "R" else (_INWARD if sock == "I" else _OUTWARD)[side]
+                if sock in "RD":
+                    marker = "o" if sock == "R" else "s"
+                else:
+                    marker = (_INWARD if sock == "I" else _OUTWARD)[side]
                 dr, dc = tiles.DELTA[side]
                 xs, ys = groups.setdefault((marker, sock), ([], []))
                 xs.append(c + 0.5 + dc * 0.36)
@@ -77,8 +81,9 @@ def socket_legend(ax: plt.Axes, **kwargs) -> None:
         Line2D([], [], marker="o", color=SOCKET_COLORS["R"], label="two-way", **style),
         Line2D([], [], marker="v", color=SOCKET_COLORS["I"], label="entrance (points in)", **style),
         Line2D([], [], marker="^", color=SOCKET_COLORS["O"], label="exit (points out)", **style),
+        Line2D([], [], marker="s", color=SOCKET_COLORS["D"], label="driveway", **style),
     ]
-    ax.legend(handles=handles, ncol=3, frameon=False, fontsize=8, **kwargs)
+    ax.legend(handles=handles, ncol=4, frameon=False, fontsize=8, **kwargs)
 
 
 def _centre(city: CityGraph, v: int) -> tuple[float, float]:
@@ -217,7 +222,7 @@ if __name__ == "__main__":
             dst = None if args.target is None else places_mod.resolve(args.target, city, all_places)
         except ValueError as e:
             parser.error(str(e))
-        routed, source, target = places_mod.with_places(city, src, dst)
+        routed, source, target = places_mod.with_places(city, src, dst, grid)
         kwargs["city"] = routed
         kwargs["places"] = [p for p in (src, dst) if isinstance(p, Place)]
         distances, parent = shortest_paths(routed.graph, source)

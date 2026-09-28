@@ -4,6 +4,7 @@ Vertices are shown 1-indexed, matching the graph files. Usage:
 
     python viz.py graphs/graph_02.txt             # opens a window
     python viz.py graphs/graph_02.txt -o g02.png  # saves to file
+    python viz.py graphs/graph_03.txt -s 1 -t 5 --gif g03.gif   # Dijkstra run as a GIF
 """
 
 import argparse
@@ -51,6 +52,7 @@ def draw(
     tree_edges: Sequence[tuple[int, int]] = (),
     explored: Collection[int] = (),
     frontier: Collection[int] = (),
+    path: Sequence[int] = (),
     ax: plt.Axes | None = None,
 ) -> plt.Axes:
     """Draws the graph on ax (a new figure if None).
@@ -61,6 +63,7 @@ def draw(
       tree_edges  arcs (u, v) highlighted, e.g. the shortest-path tree
       explored    vertices whose distance is final (green)
       frontier    discovered but not yet final (yellow)
+      path        a route as a vertex sequence, drawn in purple over the tree
     """
     g = to_networkx(graph)
     if ax is None:
@@ -70,8 +73,10 @@ def draw(
     pos = nx.circular_layout(sorted(g.nodes))
     tree = {(u + 1, v + 1) for u, v in tree_edges}
     node_colors = [_node_color(v - 1, source, explored, frontier) for v in g.nodes]
-    edge_colors = ["tab:red" if e in tree else "gray" for e in g.edges]
-    edge_widths = [2.5 if e in tree else 1.2 for e in g.edges]
+    route = {(u + 1, v + 1) for u, v in zip(path, path[1:])}
+    edge_colors = ["tab:purple" if e in route else "tab:red" if e in tree else "gray"
+                   for e in g.edges]  # fmt: skip
+    edge_widths = [4 if e in route else 2.5 if e in tree else 1.2 for e in g.edges]
 
     nx.draw_networkx_nodes(g, pos, ax=ax, node_color=node_colors, node_size=600)
     nx.draw_networkx_labels(g, pos, ax=ax, font_color="white", font_weight="bold")
@@ -128,6 +133,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("path", type=Path, help="graph file: n, then 'u v w' lines")
     parser.add_argument("-o", "--output", type=Path, help="save image instead of showing")
+    parser.add_argument("-s", "--source", type=int, default=1, help="1-indexed start (for --gif)")
+    parser.add_argument("-t", "--target", type=int, help="1-indexed destination (for --gif)")
+    parser.add_argument("--gif", type=Path, help="save a Dijkstra run from -s as an animated GIF")
+    parser.add_argument("--fps", type=float, default=1.0, help="GIF steps per second")
     args = parser.parse_args()
 
-    show(AdjacencyList.from_file(args.path), args.output, title=args.path.stem)
+    graph = AdjacencyList.from_file(args.path)
+    if args.gif:
+        import steps
+
+        steps.export_gif(args.gif, graph, args.source - 1,
+                         None if args.target is None else args.target - 1,
+                         fps=args.fps, title=f"Dijkstra on {args.path.stem} from {args.source}")  # fmt: skip
+        print(f"saved {args.gif}")
+    else:
+        show(graph, args.output, title=args.path.stem)

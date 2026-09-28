@@ -3,6 +3,7 @@
     python steps.py graphs/graph_02.txt                  # source 1, opens a window
     python steps.py graphs/graph_03.txt -s 3 -o g03.png  # source 3, saves to file
     python steps.py graphs/graph_03.txt --gif g03.gif    # animated, with a details panel
+    python steps.py graphs/graph_03.txt -s 1 -t 5 --gif g03.gif   # + route to 5 in purple
 
 Colours: orange = vertex picked this step, green = explored (final),
 yellow = discovered (tentative), blue = unknown. Red arcs = parent tree so far.
@@ -55,23 +56,60 @@ def print_steps(steps: list[Step]) -> None:
         print(f"step {i}: pick {s.picked + 1}  d = [{dist} ]  frontier = {frontier}")
 
 
-def draw_steps(graph: AdjacencyList, steps: list[Step], cols: int = 3) -> plt.Figure:
+def route(step: Step, target: int) -> list[int]:
+    """Route to target from the parent pointers at this step ([] if not reached)."""
+    if step.distances[target] == float("inf"):
+        return []
+    path = [target]
+    while (p := step.parent[path[-1]]) is not None:
+        path.append(p)
+    return path[::-1]
+
+
+def draw_step(graph: AdjacencyList, steps: list[Step], i: int, ax: plt.Axes,
+              target: int | None = None) -> None:  # fmt: skip
+    """Step i with networkx; the route to target appears once target is final."""
+    s = steps[i]
+    path = route(s, target) if target is not None and target in s.explored else []
+    viz.draw(graph, title=f"step {i + 1}: pick {s.picked + 1} (d = {viz._fmt(s.distances[s.picked])})",
+             source=s.picked,
+             distances=s.distances, tree_edges=s.tree_edges, explored=s.explored,
+             frontier=s.frontier, path=path, ax=ax)  # fmt: skip
+
+
+def export_gif(
+    path: Path,
+    graph: AdjacencyList,
+    source: int,
+    target: int | None = None,
+    fps: float = 1.0,
+    title: str = "",
+) -> Path:
+    """Dijkstra from source as an animated GIF in the networkx view (see gif.py)."""
+    import gif
+
+    steps = record_steps(graph, source)
+    return gif.export(
+        path,
+        len(steps),
+        lambda i, ax: draw_step(graph, steps, i, ax, target),
+        lambda i: gif.describe(steps, i, source, target=target,
+                               route=lambda s: route(s, target)),  # fmt: skip
+        figsize=(11, 6.5),
+        fps=fps,
+        title=title,
+    )
+
+
+def draw_steps(graph: AdjacencyList, steps: list[Step], cols: int = 3,
+               target: int | None = None) -> plt.Figure:  # fmt: skip
     rows = math.ceil(len(steps) / cols)
     # Constrained layout leaves room for the suptitle both on screen and on save
     fig, axes = plt.subplots(
         rows, cols, figsize=(5 * cols, 4.5 * rows), squeeze=False, layout="constrained"
     )
-    for ax, (i, s) in zip(axes.flat, enumerate(steps, 1)):
-        viz.draw(
-            graph,
-            title=f"step {i}: pick {s.picked + 1} (d = {viz._fmt(s.distances[s.picked])})",
-            source=s.picked,
-            distances=s.distances,
-            tree_edges=s.tree_edges,
-            explored=s.explored,
-            frontier=s.frontier,
-            ax=ax,
-        )
+    for i, ax in enumerate(axes.flat[: len(steps)]):
+        draw_step(graph, steps, i, ax, target)
     for ax in axes.flat[len(steps):]:
         ax.set_axis_off()
     return fig
@@ -81,6 +119,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("path", type=Path, help="graph file: n, then 'u v w' lines")
     parser.add_argument("-s", "--source", type=int, default=1, help="1-indexed source")
+    parser.add_argument("-t", "--target", type=int, help="1-indexed destination: route in purple")
     parser.add_argument("-o", "--output", type=Path, help="save image instead of showing")
     parser.add_argument("--gif", type=Path, help="save the run as an animated GIF")
     parser.add_argument("--fps", type=float, default=1.0, help="GIF steps per second")
@@ -90,23 +129,20 @@ if __name__ == "__main__":
     steps = record_steps(graph, args.source - 1)
     print_steps(steps)
 
+    target = None if args.target is None else args.target - 1
+    if target is not None:
+        path = route(steps[-1], target)
+        print(f"\nroute {args.source} -> {args.target}: "
+              + (" -> ".join(str(v + 1) for v in path) + f"  ({steps[-1].distances[target]:g})"
+                 if path else "unreachable"))  # fmt: skip
+
     if args.gif:
-        import gif
-
-        def draw_panel(i: int, ax: plt.Axes) -> None:
-            s = steps[i]
-            viz.draw(graph, title=f"step {i + 1}: pick {s.picked + 1}", source=s.picked,
-                     distances=s.distances, tree_edges=s.tree_edges, explored=s.explored,
-                     frontier=s.frontier, ax=ax)  # fmt: skip
-
-        gif.export(args.gif, len(steps), draw_panel,
-                   lambda i: gif.describe(steps, i, args.source - 1),
-                   figsize=(11, 6.5), fps=args.fps,
-                   title=f"Dijkstra on {args.path.stem} from {args.source}")  # fmt: skip
+        export_gif(args.gif, graph, args.source - 1, target, args.fps,
+                   f"Dijkstra on {args.path.stem} from {args.source}")  # fmt: skip
         print(f"saved {args.gif}")
         raise SystemExit
 
-    fig = draw_steps(graph, steps)
+    fig = draw_steps(graph, steps, target=target)
     fig.suptitle(f"Dijkstra on {args.path.stem} from {args.source}", fontsize=14)
     if args.output:
         fig.savefig(args.output, dpi=120, bbox_inches="tight")

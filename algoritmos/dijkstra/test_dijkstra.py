@@ -141,6 +141,23 @@ class TestCity(unittest.TestCase):
         self.assertEqual(city.shortest_path(g, 0, 1), (INF, []))
 
 
+class TestNetworkxGif(unittest.TestCase):
+    def test_export_gif_with_route(self):
+        from PIL import Image
+
+        import steps
+
+        path = GRAPHS / "_test.gif"
+        try:
+            steps.export_gif(path, load("graph_03"), 0, 6, fps=10)
+            with Image.open(path) as image:
+                self.assertEqual(image.n_frames, 7)  # one frame per vertex picked
+        finally:
+            path.unlink(missing_ok=True)
+        last = steps.record_steps(load("graph_03"), 0)[-1]
+        self.assertEqual([v + 1 for v in steps.route(last, 6)], [1, 3, 6, 5, 7])
+
+
 class TestAgainstNetworkx(unittest.TestCase):
     def test_random_graphs(self):
         rng = random.Random(0)
